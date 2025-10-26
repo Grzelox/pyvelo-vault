@@ -1,0 +1,48 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+        language_version: python3.13
+        args: ['--line-length=100']
+        files: ^(backend/|frontend/).*\.py$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Prevent committing large files
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
+      # Check for files that would conflict in case-insensitive filesystems
+      - id: check-case-conflict
+
+      # Check for merge conflicts
+      - id: check-merge-conflict
+
+      # Check YAML syntax
+      - id: check-yaml
+        exclude: ^docs/
+
+      # Check TOML syntax
+      - id: check-toml
+
+      # Detect private keys
+      - id: detect-private-key
+
+      # Fix end of file
+      - id: end-of-file-fixer
+        files: \.(py|yaml|yml|md|txt|sh)$
+
+      # Fix trailing whitespace
+      - id: trailing-whitespace
+        files: \.(py|yaml|yml|md|txt|sh)$
+
+
+  # isort - Import sorting
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ['--profile', 'black', '--line-length', '100']
+        files: ^(backend/|frontend/).*\.py$

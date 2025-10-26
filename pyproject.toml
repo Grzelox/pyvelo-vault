@@ -1,0 +1,33 @@
+[project]
+name = "pyvelo-vault"
+version = "0.1.0"
+description = "A self-hosted cycling activity tracking and analytics platform"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.120.0",
+    "uvicorn[standard]>=0.34.2",
+    "sqlalchemy>=2.0.44",
+    "psycopg2-binary>=2.9.11",
+    "pydantic-settings>=2.11.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.0.0,<5.0.0",
+    "python-multipart>=0.0.20",
+    "streamlit>=1.50.0",
+    "pandas>=2.3.3",
+    "requests>=2.32.5",
+    "pydantic[email]>=2.12.3",
+    "celery[redis]>=5.4.0",
+    "stravalib>=1.6",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.9.0",
+    "isort>=7.0.0",
+    "pre-commit>=4.3.0",
+    "sphinx>=8.2.3",
+    "sphinx-autodoc-typehints>=3.5.2",
+    "sphinx-rtd-theme>=3.0.2",
+]

@@ -1,0 +1,74 @@
+services:
+  api:
+    build: ./backend
+    container_name: pyvelo_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/pyvelovaultdb
+      - SECRET_KEY=09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID:-YOUR_CLIENT_ID_HERE}
+      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-YOUR_CLIENT_SECRET_HERE}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    container_name: pyvelo_frontend
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - api
+
+  worker:
+    build: ./backend
+    container_name: pyvelo_worker
+    command: celery -A celery_app.celery worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/pyvelovaultdb
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID:-YOUR_CLIENT_ID_HERE}
+      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-YOUR_CLIENT_SECRET_HERE}
+    volumes:
+      - ./backend/app:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: pyvelo_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=pyvelovaultdb
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d pyvelovaultdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: pyvelo_redis
+
+volumes:
+  postgres_data:
+    name: pyvelo-vault-data
