@@ -1,51 +1,6 @@
-"""Pydantic models for API request/response validation.
+"""Activity-related Pydantic schemas for API validation."""
 
-This module defines the data schemas used for API endpoints,
-ensuring type safety and automatic validation.
-"""
-
-from datetime import datetime
-from typing import Optional
-
-from pydantic import BaseModel, EmailStr
-
-
-class UserBase(BaseModel):
-    """Base user schema with common fields."""
-
-    email: EmailStr
-    username: str
-
-
-class UserCreate(UserBase):
-    """Schema for user registration."""
-
-    password: str
-
-
-class User(UserBase):
-    """User schema for API responses."""
-
-    id: int
-    created_at: datetime
-
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
-
-
-class Token(BaseModel):
-    """JWT token response."""
-
-    access_token: str
-    token_type: str
-
-
-class TokenData(BaseModel):
-    """Data extracted from JWT token."""
-
-    email: Optional[str] = None
+from pydantic import BaseModel
 
 
 class ActivityBase(BaseModel):

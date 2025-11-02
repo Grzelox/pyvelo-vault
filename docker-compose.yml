@@ -5,20 +5,23 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/app:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    environment:
-      - DATABASE_URL=postgresql://user:password@db:5432/pyvelovaultdb
-      - SECRET_KEY=09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID:-YOUR_CLIENT_ID_HERE}
-      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-YOUR_CLIENT_SECRET_HERE}
+      - ./backend:/code
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - pyvelo-network
 
   frontend:
     build: ./frontend
@@ -27,36 +30,51 @@ services:
       - "8501:8501"
     volumes:
       - ./frontend:/app
+    env_file:
+      - .env
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    networks:
+      - pyvelo-network
 
   worker:
     build: ./backend
     container_name: pyvelo_worker
-    command: celery -A celery_app.celery worker --loglevel=info
-    environment:
-      - DATABASE_URL=postgresql://user:password@db:5432/pyvelovaultdb
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID:-YOUR_CLIENT_ID_HERE}
-      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-YOUR_CLIENT_SECRET_HERE}
+    command: celery -A app.worker.celery worker --loglevel=info
+    env_file:
+      - .env
     volumes:
-      - ./backend/app:/app
+      - ./backend:/code
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+    networks:
+      - pyvelo-network
+
+  beat:
+    build: ./backend
+    container_name: pyvelo_beat
+    command: celery -A app.worker.celery beat -l info
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/code
+    depends_on:
+      - redis
+      - db
+    networks:
+      - pyvelo-network
 
   db:
     image: postgis/postgis:15-3.3
     container_name: pyvelo_db
     volumes:
       - postgres_data:/var/lib/postgresql/data/
-    environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=pyvelovaultdb
+    env_file:
+      - .env
     ports:
       - "5432:5432"
     healthcheck:
@@ -64,10 +82,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - pyvelo-network
 
   redis:
     image: redis:7-alpine
     container_name: pyvelo_redis
+    networks:
+      - pyvelo-network
+
+networks:
+  pyvelo-network:
+    driver: bridge
 
 volumes:
   postgres_data:

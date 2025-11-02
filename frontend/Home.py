@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import requests
 import streamlit as st
@@ -10,7 +12,7 @@ st.set_page_config(
 )
 
 # --- API Configuration ---
-API_URL = "http://api:8000"
+API_URL = os.getenv("API_URL", "http://api:8000")
 
 # --- Initialize Session State ---
 if "access_token" not in st.session_state:
@@ -82,8 +84,17 @@ else:
 
     st.header("Settings")
     st.markdown("### Connect to Strava")
+
+    # Include user ID in the connection URL for OAuth state tracking
+    user_id = st.session_state.user.get("id")
+    connect_url = (
+        f"http://localhost:8000/api/v1/strava/connect?user_id={user_id}"
+        if user_id
+        else "http://localhost:8000/api/v1/strava/connect"
+    )
+
     st.markdown(
-        f'<a href="http://localhost:8000/connect/strava" target="_self">🔗 Connect your Strava account</a>',
+        f'<a href="{connect_url}" target="_self">🔗 Connect your Strava account</a>',
         unsafe_allow_html=True,
     )
     st.info("👆 Click the link above to authorize pyvelo-vault to access your Strava activities.")
@@ -95,7 +106,7 @@ else:
     with col1:
         if st.button("Sync Strava Activities"):
             headers = {"Authorization": f"Bearer {st.session_state.access_token}"}
-            response = requests.post(f"{API_URL}/api/v1/sync", headers=headers)
+            response = requests.post(f"{API_URL}/api/v1/activities/sync", headers=headers)
             if response.status_code == 202:
                 st.toast("Sync started! Your activities will appear soon.", icon="👍")
             else:

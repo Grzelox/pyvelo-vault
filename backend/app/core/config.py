@@ -1,14 +1,14 @@
 """Application configuration and settings.
 
 This module manages application configuration using pydantic-settings,
-loading values from environment variables.
+loading values from environment variables and .env file.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables.
+    """Application settings loaded from environment variables and .env file.
 
     Attributes:
         DATABASE_URL: PostgreSQL database connection string in the format:
@@ -17,13 +17,25 @@ class Settings(BaseSettings):
         CELERY_RESULT_BACKEND: Redis URL for Celery result storage
         STRAVA_CLIENT_ID: Strava API Client ID
         STRAVA_CLIENT_SECRET: Strava API Client Secret
+        STRAVA_REDIRECT_URI: OAuth callback URL for Strava integration
+        FRONTEND_URL: Frontend application URL for redirects
     """
 
+    # All values must be provided via environment variables or .env file
     DATABASE_URL: str
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
     STRAVA_CLIENT_ID: str
     STRAVA_CLIENT_SECRET: str
+    STRAVA_REDIRECT_URI: str
+    FRONTEND_URL: str
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
 
 settings = Settings()

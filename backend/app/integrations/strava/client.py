@@ -1,10 +1,9 @@
-"""Factory patterns for creating complex objects.
+"""Factory for creating configured Strava API clients.
 
-This module provides factory methods and classes for creating
-instances of complex objects with proper configuration.
+This module provides factory methods for creating Strava client instances.
 """
 
-from settings import settings
+from app.core.config import settings
 from stravalib.client import Client
 
 
@@ -39,12 +38,13 @@ class StravaClientFactory:
         return client
 
     @staticmethod
-    def get_authorization_url(redirect_uri: str, scope: list = None) -> str:
+    def get_authorization_url(redirect_uri: str, scope: list = None, state: str = None) -> str:
         """Generate a Strava OAuth authorization URL.
 
         Args:
             redirect_uri: URL to redirect to after authorization
             scope: List of permission scopes to request
+            state: Optional state parameter for OAuth flow tracking
 
         Returns:
             Authorization URL string
@@ -53,9 +53,16 @@ class StravaClientFactory:
             scope = ["read_all", "activity:read_all"]
 
         client = Client()
-        return client.authorization_url(
-            client_id=settings.STRAVA_CLIENT_ID, redirect_uri=redirect_uri, scope=scope
-        )
+        auth_params = {
+            "client_id": settings.STRAVA_CLIENT_ID,
+            "redirect_uri": redirect_uri,
+            "scope": scope,
+        }
+
+        if state:
+            auth_params["state"] = state
+
+        return client.authorization_url(**auth_params)
 
     @staticmethod
     def exchange_code_for_token(code: str) -> dict:
