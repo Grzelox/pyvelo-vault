@@ -4,9 +4,13 @@ version = "0.1.0"
 description = "A self-hosted cycling activity tracking and analytics platform"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+backend = [
     "fastapi>=0.120.0",
     "uvicorn[standard]>=0.34.2",
+    "dependency-injector>=4.48.3",
     "sqlalchemy>=2.0.44",
     "psycopg2-binary>=2.9.11",
     "pydantic-settings>=2.11.0",
@@ -14,12 +18,16 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     "bcrypt>=4.0.0,<5.0.0",
     "python-multipart>=0.0.20",
-    "streamlit>=1.50.0",
-    "pandas>=2.3.3",
-    "requests>=2.32.5",
     "pydantic[email]>=2.12.3",
     "celery[redis]>=5.4.0",
     "stravalib>=1.6",
+    "garminconnect>=0.2.36",
+    "httpx>=0.28.1",
+]
+frontend = [
+    "streamlit>=1.50.0",
+    "pandas>=2.3.3",
+    "requests>=2.32.5",
 ]
 
 [dependency-groups]
@@ -27,6 +35,7 @@ dev = [
     "black>=25.9.0",
     "isort>=7.0.0",
     "pre-commit>=4.3.0",
+    "ruff>=0.14.6",
     "sphinx>=8.2.3",
     "sphinx-autodoc-typehints>=3.5.2",
     "sphinx-rtd-theme>=3.0.2",

@@ -8,10 +8,14 @@ import os
 from contextlib import asynccontextmanager
 
 from app.api.v1 import api_router
-from app.core import engine, get_password_hash
+from app.container import Container
+from app.core import engine, get_logger, get_password_hash
 from app.core.database import SessionLocal
 from app.models import Activity, Base, User
 from fastapi import FastAPI
+
+# Configure module logger
+logger = get_logger(__name__)
 
 # Create all tables defined in models in the database (skip in test mode)
 if os.getenv("TESTING") != "true" and engine is not None:
@@ -41,7 +45,7 @@ async def lifespan(app: FastAPI):
 
     # Create default user if none exists
     if db.query(User).count() == 0:
-        print("Creating default user...")
+        logger.info("Creating default user...")
         default_user = User(
             email="demo@pyvelo-vault.com",
             username="Demo User",
@@ -52,7 +56,7 @@ async def lifespan(app: FastAPI):
         db.refresh(default_user)
 
         # Seed activities for the default user
-        print("Seeding activities for default user...")
+        logger.info("Seeding activities for default user...")
         mock_activities = [
             Activity(
                 name="Morning Gravel Ride",
@@ -74,7 +78,7 @@ async def lifespan(app: FastAPI):
         db.add_all(mock_activities)
         db.commit()
     else:
-        print("Database already contains data.")
+        logger.info("Database already contains data.")
 
     db.close()
     yield
@@ -87,6 +91,11 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Dependency Injector container (used for wiring dependencies in endpoints)
+container = Container()
+container.wire()
+app.container = container  # type: ignore[attr-defined]
 
 # Include API v1 router
 app.include_router(api_router, prefix="/api/v1")

@@ -122,7 +122,7 @@ def test_user_with_strava_tokens(test_db):
         hashed_password=get_password_hash("stravapassword"),
         strava_access_token="test_access_token",
         strava_refresh_token="test_refresh_token",
-        strava_token_expires_at=datetime(2025, 12, 31, tzinfo=timezone.utc),
+        strava_token_expires_at=datetime(2099, 12, 31, tzinfo=timezone.utc),
     )
     test_db.add(user)
     test_db.commit()
@@ -148,6 +148,7 @@ def test_activities(test_db, test_user):
             moving_time=3600,
             elapsed_time=3700,
             total_elevation_gain=200.0,
+            calories=450.0,
             owner_id=test_user.id,
         ),
         Activity(
@@ -156,6 +157,7 @@ def test_activities(test_db, test_user):
             moving_time=5400,
             elapsed_time=5600,
             total_elevation_gain=350.0,
+            calories=620.0,
             owner_id=test_user.id,
         ),
     ]
@@ -207,4 +209,5 @@ def test_activity_data():
         "moving_time": 2400,
         "elapsed_time": 2500,
         "total_elevation_gain": 150.0,
+        "calories": 320.0,
     }

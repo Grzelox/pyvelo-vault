@@ -1,0 +1,56 @@
+# Streamlit configuration for pyvelo-vault
+# https://docs.streamlit.io/develop/concepts/configuration/theming
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+# Base theme - users can switch between light/dark in settings
+base = "light"
+
+# ============================================
+# LIGHT THEME (default)
+# ============================================
+[theme.light]
+# Primary accent color (pastel sage)
+primaryColor = "#8ABFA3"
+
+# Backgrounds
+backgroundColor = "#FBFAF7"
+secondaryBackgroundColor = "#EEF6F1"
+
+# Text
+textColor = "#263238"
+
+# Borders
+borderColor = "#DDE8E0"
+
+[theme.light.sidebar]
+backgroundColor = "#F1F7F3"
+textColor = "#263238"
+borderColor = "#DDE8E0"
+
+# ============================================
+# DARK THEME (Catppuccin Mocha inspired)
+# ============================================
+[theme.dark]
+# Primary accent color (pastel mint)
+primaryColor = "#A7DCCB"
+
+# Backgrounds
+backgroundColor = "#182026"
+secondaryBackgroundColor = "#223038"
+
+# Text
+textColor = "#EEF4F2"
+
+# Borders
+borderColor = "#34454E"
+
+[theme.dark.sidebar]
+backgroundColor = "#1E2A31"
+textColor = "#EEF4F2"
+borderColor = "#34454E"

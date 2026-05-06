@@ -35,7 +35,15 @@ class User(Base):
     strava_access_token = Column(String, nullable=True)
     strava_refresh_token = Column(String, nullable=True)
     strava_token_expires_at = Column(DateTime, nullable=True)
+    strava_athlete_id = Column(Integer, nullable=True)
     last_strava_sync = Column(DateTime, nullable=True)
+
+    # Garmin Connect OAuth tokens (optional integration)
+    garmin_access_token = Column(String, nullable=True)
+    garmin_refresh_token = Column(String, nullable=True)
+    garmin_token_expires_at = Column(DateTime, nullable=True)
+    garmin_user_id = Column(String, nullable=True)
+    last_garmin_sync = Column(DateTime, nullable=True)
 
     # Relationship to activities
     activities = relationship("Activity", back_populates="owner")

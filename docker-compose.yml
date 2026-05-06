@@ -6,6 +6,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/code
+      - ./logs:/logs
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     env_file:
       - .env
@@ -30,6 +31,7 @@ services:
       - "8501:8501"
     volumes:
       - ./frontend:/app
+      - ./logs:/logs
     env_file:
       - .env
     depends_on:
@@ -46,6 +48,7 @@ services:
       - .env
     volumes:
       - ./backend:/code
+      - ./logs:/logs
     depends_on:
       db:
         condition: service_healthy
@@ -62,6 +65,7 @@ services:
       - .env
     volumes:
       - ./backend:/code
+      - ./logs:/logs
     depends_on:
       - redis
       - db

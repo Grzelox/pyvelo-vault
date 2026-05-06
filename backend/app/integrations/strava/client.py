@@ -24,17 +24,27 @@ class StravaClientFactory:
         return Client()
 
     @staticmethod
-    def create_authenticated_client(access_token: str) -> Client:
+    def create_authenticated_client(
+        access_token: str,
+        refresh_token: str | None = None,
+        token_expires: int | None = None,
+    ) -> Client:
         """Create a Strava client authenticated with an access token.
 
         Args:
             access_token: OAuth2 access token
+            refresh_token: Optional OAuth2 refresh token for stravalib internals
+            token_expires: Optional access token expiry timestamp
 
         Returns:
             Authenticated Strava Client instance
         """
         client = Client()
         client.access_token = access_token
+        if refresh_token:
+            client.refresh_token = refresh_token
+        if token_expires:
+            client.token_expires = token_expires
         return client
 
     @staticmethod

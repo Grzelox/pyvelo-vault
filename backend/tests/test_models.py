@@ -30,7 +30,7 @@ class TestUserModel:
 
     def test_user_unique_email_constraint(self, test_db, test_user):
         """Test that email must be unique."""
-        duplicate_user = models.User(
+        duplicate_user = User(
             email=test_user.email,
             username="Another User",
             hashed_password="different_password",
@@ -57,7 +57,7 @@ class TestUserModel:
 
     def test_user_with_strava_tokens(self, test_db):
         """Test creating a user with Strava tokens."""
-        expires_at = datetime(2025, 12, 31, tzinfo=timezone.utc)
+        expires_at = datetime(2099, 12, 31, tzinfo=timezone.utc)
         user = User(
             email="strava@example.com",
             username="Strava User",
@@ -97,6 +97,7 @@ class TestActivityModel:
             moving_time=3600,
             elapsed_time=3700,
             total_elevation_gain=200.0,
+            calories=450.0,
             owner_id=test_user.id,
         )
         test_db.add(activity)
@@ -109,6 +110,7 @@ class TestActivityModel:
         assert activity.moving_time == 3600
         assert activity.elapsed_time == 3700
         assert activity.total_elevation_gain == 200.0
+        assert activity.calories == 450.0
         assert activity.owner_id == test_user.id
 
     def test_activity_owner_relationship(self, test_db, test_user):

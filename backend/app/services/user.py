@@ -77,7 +77,12 @@ class UserService:
         return create_access_token(data={"sub": user.email}, expires_delta=expires_delta)
 
     def update_strava_tokens(
-        self, user: User, access_token: str, refresh_token: str, expires_at: datetime
+        self,
+        user: User,
+        access_token: str,
+        refresh_token: str,
+        expires_at: datetime,
+        athlete_id: int = None,
     ) -> User:
         """Update a user's Strava OAuth tokens.
 
@@ -86,6 +91,7 @@ class UserService:
             access_token: New Strava access token
             refresh_token: New Strava refresh token
             expires_at: Token expiration datetime
+            athlete_id: Optional Strava athlete ID
 
         Returns:
             Updated user object
@@ -93,4 +99,47 @@ class UserService:
         user.strava_access_token = access_token
         user.strava_refresh_token = refresh_token
         user.strava_token_expires_at = expires_at
+        if athlete_id:
+            user.strava_athlete_id = athlete_id
+        return self.user_repo.update(user)
+
+    def disconnect_strava(self, user: User) -> User:
+        """Disconnect Strava account by clearing all OAuth tokens.
+
+        Args:
+            user: User to disconnect from Strava
+
+        Returns:
+            Updated user object with cleared Strava tokens
+        """
+        user.strava_access_token = None
+        user.strava_refresh_token = None
+        user.strava_token_expires_at = None
+        user.strava_athlete_id = None
+        user.last_strava_sync = None
+        return self.user_repo.update(user)
+
+    def update_garmin_tokens(
+        self,
+        user: User,
+        access_token: str,
+        refresh_token: str | None,
+        expires_at: datetime | None,
+        garmin_user_id: str | None = None,
+    ) -> User:
+        """Update a user's Garmin OAuth tokens."""
+        user.garmin_access_token = access_token
+        user.garmin_refresh_token = refresh_token
+        user.garmin_token_expires_at = expires_at
+        if garmin_user_id:
+            user.garmin_user_id = garmin_user_id
+        return self.user_repo.update(user)
+
+    def disconnect_garmin(self, user: User) -> User:
+        """Disconnect Garmin account by clearing all OAuth tokens."""
+        user.garmin_access_token = None
+        user.garmin_refresh_token = None
+        user.garmin_token_expires_at = None
+        user.garmin_user_id = None
+        user.last_garmin_sync = None
         return self.user_repo.update(user)

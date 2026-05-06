@@ -39,14 +39,14 @@ class TestPasswordHashing:
     def test_different_hashes_for_same_password(self):
         """Test that same password produces different hashes (salt)."""
         password = "samepassword"
-        hash1 = auth.get_password_hash(password)
-        hash2 = auth.get_password_hash(password)
+        hash1 = security.get_password_hash(password)
+        hash2 = security.get_password_hash(password)
 
         # Hashes should be different due to random salt
         assert hash1 != hash2
         # But both should verify correctly
-        assert auth.verify_password(password, hash1) is True
-        assert auth.verify_password(password, hash2) is True
+        assert security.verify_password(password, hash1) is True
+        assert security.verify_password(password, hash2) is True
 
 
 @pytest.mark.unit
@@ -105,7 +105,7 @@ class TestJWTToken:
         """Test creating a token with custom expiry."""
         data = {"sub": "user@example.com"}
         expires_delta = timedelta(minutes=30)
-        token = auth.create_access_token(data, expires_delta)
+        token = security.create_access_token(data, expires_delta)
 
         # Decode token to verify expiry
         payload = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
@@ -141,48 +141,56 @@ class TestJWTToken:
 
 @pytest.mark.unit
 class TestGetCurrentUser:
-    """Tests for get_current_user dependency."""
+    """Tests for get_current_user dependency.
 
-    @pytest.mark.asyncio
-    async def test_get_current_user_success(self, test_db, test_user):
+    These tests use asyncio.run() to execute async functions since
+    pytest-asyncio is not installed.
+    """
+
+    def test_get_current_user_success(self, test_db, test_user):
         """Test getting current user with valid token."""
+        import asyncio
+
         from app.core import get_current_user
 
         token = security.create_access_token(data={"sub": test_user.email})
 
-        user = await get_current_user(token, test_db)
+        user = asyncio.run(get_current_user(token, test_db))
 
         assert user is not None
         assert user.id == test_user.id
         assert user.email == test_user.email
 
-    @pytest.mark.asyncio
-    async def test_get_current_user_invalid_token(self, test_db):
+    def test_get_current_user_invalid_token(self, test_db):
         """Test getting current user with invalid token."""
+        import asyncio
+
         from app.core import get_current_user
         from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user("invalid_token", test_db)
+            asyncio.run(get_current_user("invalid_token", test_db))
 
         assert exc_info.value.status_code == 401
 
-    @pytest.mark.asyncio
-    async def test_get_current_user_nonexistent_user(self, test_db):
+    def test_get_current_user_nonexistent_user(self, test_db):
         """Test getting current user when user doesn't exist in database."""
+        import asyncio
+
         from app.core import get_current_user
         from fastapi import HTTPException
 
         token = security.create_access_token(data={"sub": "nonexistent@example.com"})
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(token, test_db)
+            asyncio.run(get_current_user(token, test_db))
 
         assert exc_info.value.status_code == 401
 
-    @pytest.mark.asyncio
-    async def test_get_current_user_missing_sub(self, test_db):
+    def test_get_current_user_missing_sub(self, test_db):
         """Test getting current user when token is missing 'sub' claim."""
+        import asyncio
+
         from app.core import get_current_user
         from fastapi import HTTPException
 
@@ -194,7 +202,7 @@ class TestGetCurrentUser:
         )
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(token, test_db)
+            asyncio.run(get_current_user(token, test_db))
 
         assert exc_info.value.status_code == 401
 

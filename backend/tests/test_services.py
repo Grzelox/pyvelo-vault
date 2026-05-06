@@ -1,12 +1,9 @@
 """Tests for service layer business logic."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock
 
 import pytest
 from app import schemas
-from app.core import security
-from app.models import Activity, User
 from app.repositories import ActivityRepository, UserRepository
 from app.services import ActivityService, UserService
 
@@ -101,7 +98,7 @@ class TestUserService:
         user_repo = UserRepository(test_db)
         service = UserService(user_repo)
 
-        expires_at = datetime(2025, 12, 31, tzinfo=timezone.utc)
+        expires_at = datetime(2099, 12, 31, tzinfo=timezone.utc)
         updated_user = service.update_strava_tokens(
             test_user, "new_access_token", "new_refresh_token", expires_at
         )
@@ -150,12 +147,14 @@ class TestActivityService:
             moving_time=3600,
             elapsed_time=3700,
             total_elevation_gain=250.0,
+            calories=500.0,
         )
 
         activity = service.create_activity(activity_data, test_user.id)
 
         assert activity.id is not None
         assert activity.name == "Test Ride"
+        assert activity.calories == 500.0
         assert activity.owner_id == test_user.id
 
     def test_import_activities_new(self, test_db, test_user):
@@ -171,6 +170,7 @@ class TestActivityService:
                 "moving_time": 3600,
                 "elapsed_time": 3700,
                 "total_elevation_gain": 200.0,
+                "calories": 450.0,
             },
             {
                 "id": 1002,
@@ -179,6 +179,7 @@ class TestActivityService:
                 "moving_time": 4000,
                 "elapsed_time": 4100,
                 "total_elevation_gain": 250.0,
+                "calories": 520.0,
             },
         ]
 
@@ -200,6 +201,7 @@ class TestActivityService:
                 "moving_time": 3600,
                 "elapsed_time": 3700,
                 "total_elevation_gain": 200.0,
+                "calories": 450.0,
             }
         ]
 
@@ -220,6 +222,7 @@ class TestActivityService:
                 "moving_time": 3600,
                 "elapsed_time": 3700,
                 "total_elevation_gain": 200.0,
+                "calories": 450.0,
             },
             {
                 "id": 2001,  # New
@@ -228,6 +231,7 @@ class TestActivityService:
                 "moving_time": 4500,
                 "elapsed_time": 4600,
                 "total_elevation_gain": 300.0,
+                "calories": 620.0,
             },
         ]
 

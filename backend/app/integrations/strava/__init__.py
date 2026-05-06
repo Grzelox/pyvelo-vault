@@ -2,17 +2,19 @@
 
 This package contains all Strava-related functionality including OAuth,
 client factories, sync strategies, and background tasks.
+
+Note: Tasks are not re-exported here to avoid circular imports with
+the DI container. Import tasks directly from app.integrations.strava.tasks.
 """
 
+from app.integrations.activity_sync import ActivitySyncContext, ActivitySyncStrategy
+
 from .client import StravaClientFactory
-from .strategies import ActivitySyncContext, ActivitySyncStrategy, StravaActivitySyncStrategy
-from .tasks import schedule_all_user_syncs_task, sync_single_user_strava_activities_task
+from .strategies import StravaActivitySyncStrategy
 
 __all__ = [
     "StravaClientFactory",
     "ActivitySyncStrategy",
     "StravaActivitySyncStrategy",
     "ActivitySyncContext",
-    "sync_single_user_strava_activities_task",
-    "schedule_all_user_syncs_task",
 ]

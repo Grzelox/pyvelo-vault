@@ -3,6 +3,6 @@
 This package contains all version 1 API endpoints organized by resource.
 """
 
-from . import activities, auth, health, strava, users
+from . import activities, auth, garmin, health, strava, users
 
-__all__ = ["auth", "users", "activities", "strava", "health"]
+__all__ = ["auth", "users", "activities", "strava", "garmin", "health"]

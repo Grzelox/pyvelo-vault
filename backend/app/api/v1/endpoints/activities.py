@@ -7,7 +7,10 @@ from app.models import User
 from app.repositories import ActivityRepository
 from app.schemas import Activity, ActivityCreate
 from app.services import ActivityService
-from app.worker import sync_single_user_strava_activities_task
+from app.worker import (
+    sync_single_user_garmin_activities_task,
+    sync_single_user_strava_activities_task,
+)
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -76,3 +79,10 @@ def start_sync(current_user: User = Depends(get_current_user)):
     """
     sync_single_user_strava_activities_task.delay(user_id=current_user.id)
     return {"message": "Strava activity sync has been started."}
+
+
+@router.post("/sync/garmin", status_code=202)
+def start_garmin_sync(current_user: User = Depends(get_current_user)):
+    """Trigger a background task to sync Garmin activities for the current user."""
+    sync_single_user_garmin_activities_task.delay(user_id=current_user.id)
+    return {"message": "Garmin activity sync has been started."}

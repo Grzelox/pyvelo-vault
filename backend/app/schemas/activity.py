@@ -1,5 +1,8 @@
 """Activity-related Pydantic schemas for API validation."""
 
+from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -15,6 +18,8 @@ class ActivityBase(BaseModel):
         moving_time: Active time in seconds
         elapsed_time: Total elapsed time in seconds
         total_elevation_gain: Elevation gain in meters
+        calories: Energy burned in kilocalories, when available
+        start_date: UTC timestamp when the activity started (optional)
     """
 
     name: str
@@ -22,6 +27,8 @@ class ActivityBase(BaseModel):
     moving_time: int
     elapsed_time: int
     total_elevation_gain: float
+    calories: Optional[float] = None
+    start_date: Optional[datetime] = None
 
 
 class ActivityCreate(ActivityBase):

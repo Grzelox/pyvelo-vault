@@ -82,12 +82,14 @@ class TestActivitySchemas:
             moving_time=3600,
             elapsed_time=3700,
             total_elevation_gain=250.0,
+            calories=500.0,
         )
         assert activity.name == "Morning Ride"
         assert activity.distance == 15000.0
         assert activity.moving_time == 3600
         assert activity.elapsed_time == 3700
         assert activity.total_elevation_gain == 250.0
+        assert activity.calories == 500.0
 
     def test_activity_base_type_validation(self):
         """Test ActivityBase schema validates types."""
@@ -108,6 +110,7 @@ class TestActivitySchemas:
             moving_time=4800,
             elapsed_time=5000,
             total_elevation_gain=300.0,
+            calories=650.0,
         )
         assert isinstance(activity, schemas.ActivityBase)
 
@@ -122,6 +125,7 @@ class TestActivitySchemas:
         assert activity_schema.moving_time == activity.moving_time
         assert activity_schema.elapsed_time == activity.elapsed_time
         assert activity_schema.total_elevation_gain == activity.total_elevation_gain
+        assert activity_schema.calories == activity.calories
         assert activity_schema.owner_id == activity.owner_id
 
     def test_activity_schema_includes_ids(self, test_activities):
@@ -132,6 +136,7 @@ class TestActivitySchemas:
 
         assert "id" in activity_dict
         assert "owner_id" in activity_dict
+        assert "calories" in activity_dict
 
     def test_activity_negative_values_accepted(self):
         """Test that negative values are accepted (edge case for data)."""

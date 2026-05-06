@@ -1,15 +1,13 @@
 """Tests for strategy pattern implementation."""
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
-from app.integrations.strava.strategies import (
-    ActivitySyncContext,
-    ActivitySyncStrategy,
-    StravaActivitySyncStrategy,
-)
+from app.integrations.activity_sync import ActivitySyncContext, ActivitySyncStrategy
+from app.integrations.strava.strategies import StravaActivitySyncStrategy
 from app.models import User
+from stravalib.exc import RateLimitExceeded
 
 
 @pytest.mark.unit
@@ -30,7 +28,7 @@ class TestStravaActivitySyncStrategy:
 
     def test_is_connected_false_empty_token(self, test_db):
         """Test is_connected returns False with empty token."""
-        user = models.User(
+        user = User(
             email="empty@example.com",
             username="Empty Token",
             hashed_password="password",
@@ -42,7 +40,7 @@ class TestStravaActivitySyncStrategy:
         strategy = StravaActivitySyncStrategy()
         assert strategy.is_connected(user) is False
 
-    @patch("strategies.StravaClientFactory.refresh_access_token")
+    @patch("app.integrations.strava.strategies.StravaClientFactory.refresh_access_token")
     def test_refresh_token_if_needed_expired(self, mock_refresh, test_user_with_strava_tokens):
         """Test token refresh when token is expired."""
         # Set token to expired
@@ -64,6 +62,9 @@ class TestStravaActivitySyncStrategy:
         assert result["access_token"] == "new_access_token"
         assert result["refresh_token"] == "new_refresh_token"
         assert "expires_at" in result
+        assert test_user_with_strava_tokens.strava_access_token == "new_access_token"
+        assert test_user_with_strava_tokens.strava_refresh_token == "new_refresh_token"
+        assert test_user_with_strava_tokens.strava_token_expires_at == result["expires_at"]
         mock_refresh.assert_called_once()
 
     def test_refresh_token_if_needed_not_expired(self, test_user_with_strava_tokens):
@@ -72,7 +73,7 @@ class TestStravaActivitySyncStrategy:
         from datetime import datetime, timezone
 
         test_user_with_strava_tokens.strava_token_expires_at = datetime(
-            2025, 12, 31, tzinfo=timezone.utc
+            2099, 12, 31, tzinfo=timezone.utc
         )
 
         strategy = StravaActivitySyncStrategy()
@@ -80,7 +81,7 @@ class TestStravaActivitySyncStrategy:
 
         assert result is None
 
-    @patch("strategies.StravaClientFactory.create_authenticated_client")
+    @patch("app.integrations.strava.strategies.StravaClientFactory.create_authenticated_client")
     def test_fetch_activities(self, mock_create_client, test_user_with_strava_tokens):
         """Test fetching activities from Strava."""
         # Mock the Strava client and activities
@@ -92,6 +93,7 @@ class TestStravaActivitySyncStrategy:
         mock_activity1.moving_time = Mock(total_seconds=lambda: 3600)
         mock_activity1.elapsed_time = Mock(total_seconds=lambda: 3700)
         mock_activity1.total_elevation_gain = Mock(magnitude=250.0)
+        mock_activity1.calories = 500.0
 
         mock_activity2 = Mock()
         mock_activity2.id = 1002
@@ -100,6 +102,7 @@ class TestStravaActivitySyncStrategy:
         mock_activity2.moving_time = Mock(total_seconds=lambda: 4500)
         mock_activity2.elapsed_time = Mock(total_seconds=lambda: 4600)
         mock_activity2.total_elevation_gain = Mock(magnitude=300.0)
+        mock_activity2.calories = Mock(magnitude=650.0)
 
         mock_client.get_activities.return_value = [mock_activity1, mock_activity2]
         mock_create_client.return_value = mock_client
@@ -111,8 +114,100 @@ class TestStravaActivitySyncStrategy:
         assert activities[0]["id"] == 1001
         assert activities[0]["name"] == "Morning Ride"
         assert activities[0]["distance"] == 15000.0
+        assert activities[0]["calories"] == 500.0
         assert activities[1]["id"] == 1002
         assert activities[1]["name"] == "Evening Ride"
+        assert activities[1]["calories"] == 650.0
+
+    @patch("app.integrations.strava.strategies.StravaClientFactory.create_authenticated_client")
+    def test_fetch_activities_uses_detail_calories(
+        self, mock_create_client, test_user_with_strava_tokens
+    ):
+        """Test fetching detailed activity when summary has no calories."""
+        mock_client = Mock()
+        mock_activity = Mock()
+        mock_activity.id = 1001
+        mock_activity.name = "Morning Ride"
+        mock_activity.distance = Mock(magnitude=15000.0)
+        mock_activity.moving_time = Mock(total_seconds=lambda: 3600)
+        mock_activity.elapsed_time = Mock(total_seconds=lambda: 3700)
+        mock_activity.total_elevation_gain = Mock(magnitude=250.0)
+        mock_activity.calories = None
+
+        mock_detail = Mock()
+        mock_detail.calories = 525.0
+
+        mock_client.get_activities.return_value = [mock_activity]
+        mock_client.get_activity.return_value = mock_detail
+        mock_create_client.return_value = mock_client
+
+        strategy = StravaActivitySyncStrategy()
+        activities = strategy.fetch_activities(test_user_with_strava_tokens)
+
+        assert activities[0]["calories"] == 525.0
+        mock_client.get_activity.assert_called_once_with(1001)
+
+    @patch("app.integrations.strava.strategies.time.sleep")
+    @patch("app.integrations.strava.strategies.StravaClientFactory.create_authenticated_client")
+    def test_fetch_activities_retries_rate_limit(
+        self, mock_create_client, mock_sleep, test_user_with_strava_tokens
+    ):
+        """Test activity list fetch retries after Strava rate limits."""
+        mock_client = Mock()
+        mock_activity = Mock()
+        mock_activity.id = 1001
+        mock_activity.name = "Morning Ride"
+        mock_activity.distance = Mock(magnitude=15000.0)
+        mock_activity.moving_time = Mock(total_seconds=lambda: 3600)
+        mock_activity.elapsed_time = Mock(total_seconds=lambda: 3700)
+        mock_activity.total_elevation_gain = Mock(magnitude=250.0)
+        mock_activity.calories = 500.0
+
+        mock_client.get_activities.side_effect = [
+            RateLimitExceeded("Short term API rate limit exceeded", timeout=1),
+            [mock_activity],
+        ]
+        mock_create_client.return_value = mock_client
+
+        strategy = StravaActivitySyncStrategy()
+        activities = strategy.fetch_activities(test_user_with_strava_tokens)
+
+        assert activities[0]["id"] == 1001
+        mock_sleep.assert_called_once_with(1)
+        assert mock_client.get_activities.call_count == 2
+
+    @patch("app.integrations.strava.strategies.time.sleep")
+    @patch("app.integrations.strava.strategies.StravaClientFactory.create_authenticated_client")
+    def test_detail_calories_retries_rate_limit(
+        self, mock_create_client, mock_sleep, test_user_with_strava_tokens
+    ):
+        """Test detailed calorie fetch retries after Strava rate limits."""
+        mock_client = Mock()
+        mock_activity = Mock()
+        mock_activity.id = 1001
+        mock_activity.name = "Morning Ride"
+        mock_activity.distance = Mock(magnitude=15000.0)
+        mock_activity.moving_time = Mock(total_seconds=lambda: 3600)
+        mock_activity.elapsed_time = Mock(total_seconds=lambda: 3700)
+        mock_activity.total_elevation_gain = Mock(magnitude=250.0)
+        mock_activity.calories = None
+
+        mock_detail = Mock()
+        mock_detail.calories = 525.0
+
+        mock_client.get_activities.return_value = [mock_activity]
+        mock_client.get_activity.side_effect = [
+            RateLimitExceeded("Short term API rate limit exceeded", timeout=1),
+            mock_detail,
+        ]
+        mock_create_client.return_value = mock_client
+
+        strategy = StravaActivitySyncStrategy()
+        activities = strategy.fetch_activities(test_user_with_strava_tokens)
+
+        assert activities[0]["calories"] == 525.0
+        mock_sleep.assert_called_once_with(1)
+        assert mock_client.get_activity.call_count == 2
 
 
 @pytest.mark.unit
@@ -148,8 +243,8 @@ class TestActivitySyncContext:
         assert activities == []
         assert token_update is None
 
-    @patch("strategies.StravaClientFactory.create_authenticated_client")
-    @patch("strategies.StravaClientFactory.refresh_access_token")
+    @patch("app.integrations.strava.strategies.StravaClientFactory.create_authenticated_client")
+    @patch("app.integrations.strava.strategies.StravaClientFactory.refresh_access_token")
     def test_sync_activities_success(
         self, mock_refresh, mock_create_client, test_user_with_strava_tokens
     ):
@@ -158,7 +253,7 @@ class TestActivitySyncContext:
         from datetime import datetime, timezone
 
         test_user_with_strava_tokens.strava_token_expires_at = datetime(
-            2025, 12, 31, tzinfo=timezone.utc
+            2099, 12, 31, tzinfo=timezone.utc
         )
 
         # Mock client
@@ -170,6 +265,7 @@ class TestActivitySyncContext:
         mock_activity.moving_time = Mock(total_seconds=lambda: 3600)
         mock_activity.elapsed_time = Mock(total_seconds=lambda: 3700)
         mock_activity.total_elevation_gain = Mock(magnitude=200.0)
+        mock_activity.calories = 300.0
 
         mock_client.get_activities.return_value = [mock_activity]
         mock_create_client.return_value = mock_client
@@ -184,11 +280,12 @@ class TestActivitySyncContext:
         assert is_connected is True
         assert len(activities) == 1
         assert activities[0]["name"] == "Test Ride"
+        assert activities[0]["calories"] == 300.0
         # Token not expired, so no update
         assert token_update is None
 
-    @patch("strategies.StravaClientFactory.create_authenticated_client")
-    @patch("strategies.StravaClientFactory.refresh_access_token")
+    @patch("app.integrations.strava.strategies.StravaClientFactory.create_authenticated_client")
+    @patch("app.integrations.strava.strategies.StravaClientFactory.refresh_access_token")
     def test_sync_activities_with_token_refresh(
         self, mock_refresh, mock_create_client, test_user_with_strava_tokens
     ):

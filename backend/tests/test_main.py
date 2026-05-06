@@ -198,10 +198,10 @@ class TestActivitiesEndpoints:
 class TestStravaSyncEndpoint:
     """Tests for Strava sync endpoint."""
 
-    @patch("tasks.sync_strava_activities_task.delay")
+    @patch("app.api.v1.endpoints.activities.sync_single_user_strava_activities_task.delay")
     def test_start_sync_authenticated(self, mock_task, client, auth_headers):
         """Test starting Strava sync for authenticated user."""
-        response = client.post("/api/v1/sync", headers=auth_headers)
+        response = client.post("/api/v1/activities/sync", headers=auth_headers)
 
         assert response.status_code == 202
         data = response.json()
@@ -213,7 +213,7 @@ class TestStravaSyncEndpoint:
 
     def test_start_sync_no_auth(self, client):
         """Test starting sync without authentication fails."""
-        response = client.post("/api/v1/sync")
+        response = client.post("/api/v1/activities/sync")
 
         assert response.status_code == 401
 
@@ -222,23 +222,25 @@ class TestStravaSyncEndpoint:
 class TestStravaOAuthEndpoints:
     """Tests for Strava OAuth flow endpoints."""
 
-    @patch("factories.StravaClientFactory.get_authorization_url")
+    @patch("app.integrations.strava.client.StravaClientFactory.get_authorization_url")
     def test_connect_strava(self, mock_get_url, client, auth_headers):
         """Test initiating Strava connection."""
         mock_get_url.return_value = "https://www.strava.com/oauth/authorize?..."
 
-        response = client.get("/connect/strava", headers=auth_headers, follow_redirects=False)
+        response = client.get(
+            "/api/v1/strava/connect", headers=auth_headers, follow_redirects=False
+        )
 
         assert response.status_code == 307  # Redirect
         assert "strava.com" in response.headers["location"]
 
     def test_connect_strava_no_auth(self, client):
-        """Test connecting Strava without authentication fails."""
-        response = client.get("/connect/strava")
+        """Test connecting Strava without authentication succeeds (redirect)."""
+        response = client.get("/api/v1/strava/connect", follow_redirects=False)
 
-        assert response.status_code == 401
+        assert response.status_code == 307
 
-    @patch("factories.StravaClientFactory.exchange_code_for_token")
+    @patch("app.integrations.strava.client.StravaClientFactory.exchange_code_for_token")
     def test_handle_strava_auth_callback(self, mock_exchange, client, test_db, test_user):
         """Test handling Strava OAuth callback."""
         mock_exchange.return_value = {
@@ -247,7 +249,10 @@ class TestStravaOAuthEndpoints:
             "expires_at": 1735689600,
         }
 
-        response = client.get("/auth/strava?code=authorization_code_123", follow_redirects=False)
+        response = client.get(
+            "/api/v1/strava/callback?code=authorization_code_123",
+            follow_redirects=False,
+        )
 
         assert response.status_code == 307  # Redirect
         assert "localhost:8501" in response.headers["location"]

@@ -1,5 +1,9 @@
 docs/
 
+# Application logs
+logs/*
+!logs/.gitkeep
+
 # Python-generated files
 __pycache__/
 *.py[oc]

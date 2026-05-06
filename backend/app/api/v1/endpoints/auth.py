@@ -1,4 +1,8 @@
-"""Authentication endpoints."""
+"""Authentication endpoints.
+
+Uses standard FastAPI dependency injection (not the DI container).
+The container is reserved for Celery tasks and other non-request contexts.
+"""
 
 from datetime import timedelta
 
@@ -14,7 +18,10 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=User)
-def register_user(user: UserCreate, db: Session = Depends(get_db)):
+def register_user(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+):
     """Register a new user account.
 
     Creates a new user with the provided email, username, and password.
@@ -30,7 +37,6 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If email is already registered
     """
-    # Use repository and service patterns
     user_repo = UserRepository(db)
     user_service = UserService(user_repo)
 
@@ -41,7 +47,10 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/token", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
     """Login and receive a JWT access token.
 
     Authenticates user with email/username and password, returns a JWT token

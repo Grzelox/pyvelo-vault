@@ -43,6 +43,20 @@ The application uses environment variables for sensitive configuration. A `.env.
    - `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET`: Get these from the [Strava API Settings](https://www.strava.com/settings/api)
    - Other variables have sensible defaults for local development
 
+#### Logging configuration
+
+- Logs for every service are written to the shared `logs/` directory (mounted as `/logs` inside Docker containers).
+- Set the following variables in your `.env` to control logging:
+
+  ```
+  LOG_DIR=/logs
+  BACKEND_LOG_LEVEL=INFO
+  FRONTEND_LOG_LEVEL=INFO
+  ```
+
+- Use any standard Python logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`). Backend and frontend log levels can differ.
+- For local (non-Docker) runs you can set `LOG_DIR=logs` to write next to the repository root.
+
 ### Access the Application
 
 - **Frontend**: <http://localhost:8501>

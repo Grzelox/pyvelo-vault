@@ -18,6 +18,7 @@ class Settings(BaseSettings):
         STRAVA_CLIENT_ID: Strava API Client ID
         STRAVA_CLIENT_SECRET: Strava API Client Secret
         STRAVA_REDIRECT_URI: OAuth callback URL for Strava integration
+        GARMIN_TOKENS_DIR: Directory where Garmin tokenstores are persisted
         FRONTEND_URL: Frontend application URL for redirects
     """
 
@@ -28,7 +29,11 @@ class Settings(BaseSettings):
     STRAVA_CLIENT_ID: str
     STRAVA_CLIENT_SECRET: str
     STRAVA_REDIRECT_URI: str
+    # Garmin Connect (via python-garminconnect). Tokenstore dir (per-user subdirs).
+    GARMIN_TOKENS_DIR: str = "logs/garminconnect"
     FRONTEND_URL: str
+    LOG_DIR: str = "logs"
+    BACKEND_LOG_LEVEL: str = "INFO"
 
     model_config = SettingsConfigDict(
         env_file=".env",

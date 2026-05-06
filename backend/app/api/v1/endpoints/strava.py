@@ -1,10 +1,15 @@
-"""Strava OAuth and integration endpoints."""
+"""Strava OAuth and integration endpoints.
+
+Uses standard FastAPI dependency injection (not the DI container).
+The container is reserved for Celery tasks and other non-request contexts.
+"""
 
 from datetime import datetime, timezone
 
-from app.core import get_db
+from app.core import get_current_user, get_db
 from app.core.config import settings
 from app.integrations.strava import StravaClientFactory
+from app.models import User
 from app.repositories import UserRepository
 from app.services import UserService
 from fastapi import APIRouter, Depends, Query
@@ -15,7 +20,9 @@ router = APIRouter()
 
 
 @router.get("/connect")
-def connect_strava(user_id: int = Query(None, description="User ID for OAuth state tracking")):
+def connect_strava(
+    user_id: int = Query(None, description="User ID for OAuth state tracking"),
+):
     """Redirect the user to Strava's authorization page.
 
     This initiates the OAuth2 flow by redirecting the user to Strava where they
@@ -85,12 +92,40 @@ def handle_strava_callback(
         user_to_update = user_repo.get_latest()
 
     if user_to_update:
+        athlete_id = token_response.get("athlete", {}).get("id")
         user_service.update_strava_tokens(
             user_to_update,
             token_response["access_token"],
             token_response["refresh_token"],
             datetime.fromtimestamp(token_response["expires_at"], tz=timezone.utc),
+            athlete_id=athlete_id,
         )
 
     # Redirect user back to the frontend
     return RedirectResponse(settings.FRONTEND_URL)
+
+
+@router.post("/disconnect")
+def disconnect_strava(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Disconnect Strava account from the user.
+
+    This endpoint removes all Strava OAuth tokens and athlete information
+    from the user's account, effectively disconnecting their Strava integration.
+
+    Args:
+        current_user: Currently authenticated user (injected dependency)
+        db: Database session (injected dependency)
+
+    Returns:
+        dict: Success message
+    """
+    user_repo = UserRepository(db)
+    user_service = UserService(user_repo)
+
+    # Clear Strava tokens and athlete info
+    user_service.disconnect_strava(current_user)
+
+    return {"message": "Strava account disconnected successfully"}
