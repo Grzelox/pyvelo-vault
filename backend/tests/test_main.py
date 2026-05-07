@@ -5,7 +5,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 from app import schemas
+from app.core import ACCESS_TOKEN_EXPIRE_MINUTES, REMEMBER_ME_ACCESS_TOKEN_EXPIRE_DAYS, security
 from app.models import Activity, User
+from jose import jwt
 
 
 @pytest.mark.integration
@@ -79,6 +81,27 @@ class TestAuthentication:
         data = response.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
+        assert data["expires_in"] == ACCESS_TOKEN_EXPIRE_MINUTES * 60
+
+    def test_login_remember_me_uses_extended_expiry(self, client, test_user):
+        """Test remember me login receives a longer-lived token."""
+        form_data = {
+            "username": test_user.email,
+            "password": "testpassword",
+            "remember_me": "true",
+        }
+        response = client.post("/api/v1/token", data=form_data)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["expires_in"] == REMEMBER_ME_ACCESS_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+
+        payload = jwt.decode(
+            data["access_token"], security.SECRET_KEY, algorithms=[security.ALGORITHM]
+        )
+        exp_time = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+        remaining = exp_time - datetime.now(timezone.utc)
+        assert remaining.days >= REMEMBER_ME_ACCESS_TOKEN_EXPIRE_DAYS - 1
 
     def test_login_wrong_password(self, client, test_user):
         """Test login with wrong password fails."""

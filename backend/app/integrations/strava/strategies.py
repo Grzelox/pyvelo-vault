@@ -107,7 +107,7 @@ class StravaActivitySyncStrategy(ActivitySyncStrategy):
         # Based on Strava API v3 DetailedActivity model:
         # https://developers.strava.com/docs/reference/#api-models-DetailedActivity
         standardized_activities = []
-        detail_calorie_fetch_count = 0
+        missing_calorie_count = 0
         for index, activity in enumerate(activities, start=1):
             try:
                 if index == 1 or index % 25 == 0 or index == len(activities):
@@ -168,8 +168,7 @@ class StravaActivitySyncStrategy(ActivitySyncStrategy):
 
                 calories = _extract_float(getattr(activity, "calories", None))
                 if calories is None:
-                    detail_calorie_fetch_count += 1
-                    calories = self._fetch_activity_calories(client, activity.id)
+                    missing_calorie_count += 1
 
                 standardized_activities.append(
                     {
@@ -191,12 +190,36 @@ class StravaActivitySyncStrategy(ActivitySyncStrategy):
                 continue
 
         self._logger.info(
-            "Normalized %s/%s Strava activities. Detail calorie requests: %s.",
+            "Normalized %s/%s Strava activities. Missing calories: %s.",
             len(standardized_activities),
             len(activities),
-            detail_calorie_fetch_count,
+            missing_calorie_count,
         )
         return standardized_activities
+
+    def fetch_activity_calories_batch(
+        self, user: User, activity_ids: list[int]
+    ) -> dict[int, float]:
+        """Fetch detailed calories for selected Strava activities."""
+        token_expires = None
+        if user.strava_token_expires_at:
+            expires_at = user.strava_token_expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            token_expires = int(expires_at.timestamp())
+
+        client = StravaClientFactory.create_authenticated_client(
+            user.strava_access_token,
+            refresh_token=user.strava_refresh_token,
+            token_expires=token_expires,
+        )
+
+        calories_by_activity_id = {}
+        for activity_id in activity_ids:
+            calories = self._fetch_activity_calories(client, activity_id)
+            if calories is not None:
+                calories_by_activity_id[int(activity_id)] = calories
+        return calories_by_activity_id
 
     def _fetch_activity_calories(self, client, activity_id: int) -> float | None:
         """Fetch detailed Strava activity calories when summary data lacks them."""
@@ -239,6 +262,7 @@ def _extract_float(value) -> float | None:
 
 def _call_with_rate_limit_backoff(logger, operation, description: str):
     """Retry a Strava API operation with exponential backoff on rate limits."""
+    total_attempts = _RATE_LIMIT_MAX_RETRIES + 1
     for attempt in range(_RATE_LIMIT_MAX_RETRIES + 1):
         try:
             return operation()
@@ -247,12 +271,18 @@ def _call_with_rate_limit_backoff(logger, operation, description: str):
                 raise
 
             delay_seconds = _rate_limit_delay_seconds(exc, attempt)
+            retry_number = attempt + 1
+            next_attempt = attempt + 2
             logger.warning(
-                "Strava rate limit while trying to %s. Retrying in %s seconds " "(attempt %s/%s).",
+                "Strava rate limit while trying to %s: %s. Retry %s/%s will wait "
+                "%s seconds before next attempt %s/%s.",
                 description,
-                delay_seconds,
-                attempt + 1,
+                _rate_limit_error_message(exc),
+                retry_number,
                 _RATE_LIMIT_MAX_RETRIES,
+                delay_seconds,
+                next_attempt,
+                total_attempts,
             )
             time.sleep(delay_seconds)
 
@@ -266,6 +296,24 @@ def _is_rate_limit_error(exc: Exception) -> bool:
 
     message = str(exc).lower()
     return "rate limit" in message or "too many requests" in message
+
+
+def _rate_limit_error_message(exc: Exception) -> str:
+    """Return a useful message for rate limit exceptions that stringify empty."""
+    message = str(exc)
+    if message:
+        return message
+
+    for arg in getattr(exc, "args", ()):  # stravalib can omit args from __str__.
+        if arg:
+            return str(arg)
+
+    if isinstance(exc, RateLimitTimeout):
+        return "Strava API rate limit timeout"
+    if isinstance(exc, RateLimitExceeded):
+        return "Strava API rate limit exceeded"
+
+    return exc.__class__.__name__
 
 
 def _rate_limit_delay_seconds(exc: Exception, attempt: int) -> int:

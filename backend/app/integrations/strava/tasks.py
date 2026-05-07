@@ -19,6 +19,9 @@ from .strategies import StravaActivitySyncStrategy
 
 logger = get_logger(__name__)
 
+_CALORIE_BACKFILL_BATCH_SIZE = 10
+_CALORIE_BACKFILL_BATCH_DELAY_SECONDS = 60
+
 
 @inject
 def sync_single_user_strava_activities_task(
@@ -111,19 +114,103 @@ def sync_single_user_strava_activities_task(
             )
             user_repo.update(user)
 
+            strava_activity_ids = [int(activity["id"]) for activity in activities_data]
+            missing_calorie_activities = act_service.get_activities_missing_calories(
+                user_id,
+                activity_ids=strava_activity_ids,
+            )
+            backfill_tasks_dispatched = _dispatch_calorie_backfill_tasks(
+                user_id,
+                [activity.id for activity in missing_calorie_activities],
+            )
+
             logger.info(
-                "Strava sync completed for user_id=%s. Added %s new activities.",
+                "Strava sync completed for user_id=%s. Added %s new activities. "
+                "Dispatched %s calorie backfill tasks.",
                 user_id,
                 activity_count,
+                backfill_tasks_dispatched,
             )
             return {
                 "status": "complete",
                 "user_id": user_id,
                 "activities_added": activity_count,
+                "calorie_backfill_tasks": backfill_tasks_dispatched,
             }
 
     except Exception as e:
         logger.exception("Error during Strava sync for user_id=%s", user_id)
+        return {"status": "error", "message": str(e)}
+
+
+@inject
+def fill_missing_strava_activity_calories_task(
+    user_id: int,
+    activity_ids: list[int],
+    db_session=Provide[Container.db_session],
+    user_repository: type[UserRepository] = Provide[Container.user_repository.provider],
+    activity_repository: type[ActivityRepository] = Provide[Container.activity_repository.provider],
+    activity_service: type[ActivityService] = Provide[Container.activity_service.provider],
+):
+    """Fill missing calories for up to one batch of Strava activities."""
+    batch_activity_ids = [int(activity_id) for activity_id in activity_ids][
+        :_CALORIE_BACKFILL_BATCH_SIZE
+    ]
+    logger.info(
+        "Starting Strava calorie backfill for user_id=%s, activity_ids=%s.",
+        user_id,
+        batch_activity_ids,
+    )
+
+    try:
+        with db_session as session:
+            user_repo = user_repository(db=session)
+            activity_repo = activity_repository(db=session)
+            act_service = activity_service(activity_repo=activity_repo)
+
+            user = user_repo.get_by_id(user_id)
+            if not user:
+                logger.warning("User %s not found during Strava calorie backfill.", user_id)
+                return {"status": "error", "message": "User not found"}
+
+            sync_strategy = StravaActivitySyncStrategy()
+            if not sync_strategy.is_connected(user):
+                logger.warning("User %s not connected to Strava during calorie backfill.", user_id)
+                return {"status": "error", "message": "User not connected to Strava"}
+
+            token_update = sync_strategy.refresh_token_if_needed(user)
+            if token_update:
+                user_repo.update(user)
+
+            missing_activities = act_service.get_activities_missing_calories(
+                user_id,
+                activity_ids=batch_activity_ids,
+            )
+            missing_activity_ids = [activity.id for activity in missing_activities]
+            calories_by_activity_id = sync_strategy.fetch_activity_calories_batch(
+                user,
+                missing_activity_ids,
+            )
+
+            updated_count = 0
+            for activity_id, calories in calories_by_activity_id.items():
+                if act_service.update_activity_calories(activity_id, user_id, calories):
+                    updated_count += 1
+
+            logger.info(
+                "Strava calorie backfill completed for user_id=%s. Updated %s/%s activities.",
+                user_id,
+                updated_count,
+                len(missing_activity_ids),
+            )
+            return {
+                "status": "complete",
+                "user_id": user_id,
+                "activities_updated": updated_count,
+            }
+
+    except Exception as e:
+        logger.exception("Error during Strava calorie backfill for user_id=%s", user_id)
         return {"status": "error", "message": str(e)}
 
 
@@ -164,3 +251,25 @@ def schedule_all_user_syncs_task(
     except Exception as e:
         logger.exception("Error during sync dispatch.")
         return {"status": "error", "message": str(e)}
+
+
+def _dispatch_calorie_backfill_tasks(user_id: int, activity_ids: list[int]) -> int:
+    """Dispatch missing-calorie backfill tasks in small staggered batches."""
+    if not activity_ids:
+        return 0
+
+    from app.worker import fill_missing_strava_activity_calories_task as task
+
+    dispatched_count = 0
+    for batch_index, batch in enumerate(_chunked(activity_ids, _CALORIE_BACKFILL_BATCH_SIZE)):
+        task.apply_async(
+            args=(user_id, batch),
+            countdown=batch_index * _CALORIE_BACKFILL_BATCH_DELAY_SECONDS,
+        )
+        dispatched_count += 1
+    return dispatched_count
+
+
+def _chunked(items: list[int], size: int) -> list[list[int]]:
+    """Split a list into fixed-size chunks."""
+    return [items[index : index + size] for index in range(0, len(items), size)]

@@ -238,3 +238,29 @@ class TestActivityService:
         count = service.import_activities(activities_data, test_user.id)
 
         assert count == 1  # Only the new one should be imported
+
+    def test_get_activities_missing_calories(self, test_db, test_user, test_activities):
+        """Test getting activities that need calorie backfill."""
+        test_activities[0].calories = None
+        test_db.commit()
+
+        activity_repo = ActivityRepository(test_db)
+        service = ActivityService(activity_repo)
+
+        activities = service.get_activities_missing_calories(test_user.id)
+
+        assert [activity.id for activity in activities] == [test_activities[0].id]
+
+    def test_update_activity_calories(self, test_db, test_user, test_activities):
+        """Test updating activity calories through service layer."""
+        test_activities[0].calories = None
+        test_db.commit()
+
+        activity_repo = ActivityRepository(test_db)
+        service = ActivityService(activity_repo)
+
+        updated = service.update_activity_calories(test_activities[0].id, test_user.id, 555.0)
+
+        assert updated is True
+        test_db.refresh(test_activities[0])
+        assert test_activities[0].calories == 555.0

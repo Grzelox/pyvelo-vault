@@ -18,6 +18,8 @@ click==8.3.1
     # via streamlit
 colorama==0.4.6 ; sys_platform == 'win32'
     # via click
+extra-streamlit-components==0.1.81
+    # via pyvelo-vault (pyproject.toml)
 gitdb==4.0.12
     # via gitpython
 gitpython==3.1.45

@@ -11,10 +11,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 from app.integrations.strava.tasks import (
+    fill_missing_strava_activity_calories_task,
     schedule_all_user_syncs_task,
     sync_single_user_strava_activities_task,
 )
-from app.models import User
+from app.models import Activity, User
 from app.repositories import ActivityRepository, UserRepository
 from app.services import ActivityService
 
@@ -44,6 +45,7 @@ class TestSyncSingleUserStravaActivitiesTask:
                 "moving_time": 3600,
                 "elapsed_time": 3700,
                 "total_elevation_gain": 250.0,
+                "calories": 450.0,
             }
         ]
         mock_strategy_class.return_value = mock_strategy
@@ -149,6 +151,7 @@ class TestSyncSingleUserStravaActivitiesTask:
                 "moving_time": 1,
                 "elapsed_time": 1,
                 "total_elevation_gain": 1.0,
+                "calories": 450.0,
             },
             {
                 "id": 9999,
@@ -157,6 +160,7 @@ class TestSyncSingleUserStravaActivitiesTask:
                 "moving_time": 2,
                 "elapsed_time": 2,
                 "total_elevation_gain": 2.0,
+                "calories": 620.0,
             },
         ]
         mock_strategy_class.return_value = mock_strategy
@@ -173,6 +177,107 @@ class TestSyncSingleUserStravaActivitiesTask:
         assert (
             test_db.query(type(test_activities[0])).filter_by(owner_id=user_id).count()
             == initial_count + 1
+        )
+
+    @patch("app.worker.fill_missing_strava_activity_calories_task.apply_async")
+    @patch("app.integrations.strava.tasks.StravaActivitySyncStrategy")
+    def test_dispatches_calorie_backfill_batches(
+        self,
+        mock_strategy_class,
+        mock_apply_async,
+        test_db,
+        test_user_with_strava_tokens,
+    ):
+        user_id = test_user_with_strava_tokens.id
+        activities_data = [
+            {
+                "id": 10000 + index,
+                "name": f"Activity {index}",
+                "distance": 10000.0,
+                "moving_time": 3600,
+                "elapsed_time": 3700,
+                "total_elevation_gain": 250.0,
+                "calories": None,
+            }
+            for index in range(25)
+        ]
+
+        mock_strategy = Mock()
+        mock_strategy.is_connected.return_value = True
+        mock_strategy.refresh_token_if_needed.return_value = None
+        mock_strategy.fetch_activities.return_value = activities_data
+        mock_strategy_class.return_value = mock_strategy
+
+        result = sync_single_user_strava_activities_task(
+            user_id,
+            db_session=db_session_context(test_db),
+            user_repository=UserRepository,
+            activity_repository=ActivityRepository,
+            activity_service=ActivityService,
+        )
+
+        assert result["status"] == "complete"
+        assert result["calorie_backfill_tasks"] == 3
+        assert mock_apply_async.call_count == 3
+        assert [call.kwargs["countdown"] for call in mock_apply_async.call_args_list] == [
+            0,
+            60,
+            120,
+        ]
+        assert [len(call.kwargs["args"][1]) for call in mock_apply_async.call_args_list] == [
+            10,
+            10,
+            5,
+        ]
+
+
+@pytest.mark.unit
+class TestFillMissingStravaActivityCaloriesTask:
+    """Tests for Strava calorie backfill task function."""
+
+    @patch("app.integrations.strava.tasks.StravaActivitySyncStrategy")
+    def test_updates_missing_calories(
+        self,
+        mock_strategy_class,
+        test_db,
+        test_user_with_strava_tokens,
+    ):
+        user_id = test_user_with_strava_tokens.id
+        activity = Activity(
+            id=8888,
+            name="Needs Calories",
+            distance=12000.0,
+            moving_time=2400,
+            elapsed_time=2500,
+            total_elevation_gain=150.0,
+            calories=None,
+            owner_id=user_id,
+        )
+        test_db.add(activity)
+        test_db.commit()
+
+        mock_strategy = Mock()
+        mock_strategy.is_connected.return_value = True
+        mock_strategy.refresh_token_if_needed.return_value = None
+        mock_strategy.fetch_activity_calories_batch.return_value = {8888: 555.0}
+        mock_strategy_class.return_value = mock_strategy
+
+        result = fill_missing_strava_activity_calories_task(
+            user_id,
+            [8888],
+            db_session=db_session_context(test_db),
+            user_repository=UserRepository,
+            activity_repository=ActivityRepository,
+            activity_service=ActivityService,
+        )
+
+        assert result["status"] == "complete"
+        assert result["activities_updated"] == 1
+        test_db.refresh(activity)
+        assert activity.calories == 555.0
+        mock_strategy.fetch_activity_calories_batch.assert_called_once_with(
+            test_user_with_strava_tokens,
+            [8888],
         )
 
 

@@ -140,6 +140,30 @@ class TestActivityRepository:
 
         assert len(activities) == 0
 
+    def test_get_missing_calories_by_user(self, test_db, test_user, test_activities):
+        """Test getting activities that need calorie backfill."""
+        test_activities[0].calories = None
+        test_db.commit()
+
+        repo = ActivityRepository(test_db)
+        activities = repo.get_missing_calories_by_user(test_user.id)
+
+        assert [activity.id for activity in activities] == [test_activities[0].id]
+
+    def test_get_missing_calories_by_user_filters_ids(self, test_db, test_user, test_activities):
+        """Test missing calorie lookup can be limited to selected activities."""
+        test_activities[0].calories = None
+        test_activities[1].calories = None
+        test_db.commit()
+
+        repo = ActivityRepository(test_db)
+        activities = repo.get_missing_calories_by_user(
+            test_user.id,
+            activity_ids=[test_activities[1].id],
+        )
+
+        assert [activity.id for activity in activities] == [test_activities[1].id]
+
     def test_exists_true(self, test_db, test_user, test_activities):
         """Test exists returns True when activity exists for user."""
         repo = ActivityRepository(test_db)
@@ -201,3 +225,22 @@ class TestActivityRepository:
         # Verify in database
         db_activities = repo.get_by_user(test_user.id)
         assert len(db_activities) >= 3
+
+    def test_update_calories(self, test_db, test_user, test_activities):
+        """Test updating calories for a user-owned activity."""
+        test_activities[0].calories = None
+        test_db.commit()
+
+        repo = ActivityRepository(test_db)
+        updated = repo.update_calories(test_activities[0].id, test_user.id, 555.0)
+
+        assert updated is True
+        test_db.refresh(test_activities[0])
+        assert test_activities[0].calories == 555.0
+
+    def test_update_calories_wrong_user(self, test_db, test_activities):
+        """Test calorie updates are scoped to the owning user."""
+        repo = ActivityRepository(test_db)
+        updated = repo.update_calories(test_activities[0].id, 99999, 555.0)
+
+        assert updated is False

@@ -10,6 +10,7 @@ from .dependencies import get_current_user, get_db
 from .logging_config import get_logger
 from .security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
+    REMEMBER_ME_ACCESS_TOKEN_EXPIRE_DAYS,
     create_access_token,
     get_password_hash,
     verify_password,
@@ -27,4 +28,5 @@ __all__ = [
     "verify_password",
     "create_access_token",
     "ACCESS_TOKEN_EXPIRE_MINUTES",
+    "REMEMBER_ME_ACCESS_TOKEN_EXPIRE_DAYS",
 ]

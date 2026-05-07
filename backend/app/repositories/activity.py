@@ -30,6 +30,20 @@ class ActivityRepository(BaseRepository[Activity]):
         """
         return self.db.query(Activity).filter(Activity.owner_id == user_id).all()
 
+    def get_missing_calories_by_user(
+        self, user_id: int, activity_ids: list[int] | None = None
+    ) -> List[Activity]:
+        """Get user activities that still need calorie backfill."""
+        query = self.db.query(Activity).filter(
+            Activity.owner_id == user_id,
+            Activity.calories.is_(None),
+        )
+        if activity_ids is not None:
+            if not activity_ids:
+                return []
+            query = query.filter(Activity.id.in_(activity_ids))
+        return query.order_by(Activity.start_date.desc()).all()
+
     def exists(self, activity_id: int, user_id: int) -> bool:
         """Check if an activity exists for a user.
 
@@ -56,3 +70,17 @@ class ActivityRepository(BaseRepository[Activity]):
         self.db.add_all(activities)
         self.db.commit()
         return len(activities)
+
+    def update_calories(self, activity_id: int, user_id: int, calories: float) -> bool:
+        """Update calories for a single user-owned activity."""
+        activity = (
+            self.db.query(Activity)
+            .filter(Activity.id == activity_id, Activity.owner_id == user_id)
+            .first()
+        )
+        if activity is None:
+            return False
+
+        activity.calories = calories
+        self.db.commit()
+        return True

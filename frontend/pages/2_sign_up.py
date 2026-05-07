@@ -4,6 +4,7 @@ import time
 
 import requests
 import streamlit as st
+from auth import initialize_auth_state
 from logging_service import get_frontend_logger
 from theme import inject_theme_variables
 
@@ -20,13 +21,8 @@ logger = get_frontend_logger(__name__)
 # --- API Configuration ---
 API_URL = os.getenv("API_URL", "http://api:8000")
 
-# --- Initialize Session State ---
-if "access_token" not in st.session_state:
-    st.session_state.access_token = None
-if "user" not in st.session_state:
-    st.session_state.user = None
-
 inject_theme_variables()
+initialize_auth_state(API_URL, logger)
 
 
 def validate_email(email: str) -> tuple[bool, str]:
@@ -91,13 +87,7 @@ def register_user(email: str, username: str, password: str) -> tuple[bool, str]:
 
 # --- Check if already logged in ---
 if st.session_state.access_token:
-    st.title("Already Logged In")
-    st.success(
-        f"Logged in as: **{st.session_state.user['username']}** ({st.session_state.user['email']})"
-    )
-
-    if st.button("Go to Home", use_container_width=True):
-        st.switch_page("Home.py")
+    st.switch_page("Home.py")
 else:
     # --- Header ---
     st.title("Join pyvelo-vault")

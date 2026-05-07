@@ -1,11 +1,14 @@
 """Tests for strategy pattern implementation."""
 
 from datetime import datetime, timezone
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 from app.integrations.activity_sync import ActivitySyncContext, ActivitySyncStrategy
-from app.integrations.strava.strategies import StravaActivitySyncStrategy
+from app.integrations.strava.strategies import (
+    StravaActivitySyncStrategy,
+    _call_with_rate_limit_backoff,
+)
 from app.models import User
 from stravalib.exc import RateLimitExceeded
 
@@ -120,10 +123,10 @@ class TestStravaActivitySyncStrategy:
         assert activities[1]["calories"] == 650.0
 
     @patch("app.integrations.strava.strategies.StravaClientFactory.create_authenticated_client")
-    def test_fetch_activities_uses_detail_calories(
+    def test_fetch_activities_keeps_missing_calories_for_backfill(
         self, mock_create_client, test_user_with_strava_tokens
     ):
-        """Test fetching detailed activity when summary has no calories."""
+        """Test summary sync does not fetch detailed calories inline."""
         mock_client = Mock()
         mock_activity = Mock()
         mock_activity.id = 1001
@@ -134,18 +137,14 @@ class TestStravaActivitySyncStrategy:
         mock_activity.total_elevation_gain = Mock(magnitude=250.0)
         mock_activity.calories = None
 
-        mock_detail = Mock()
-        mock_detail.calories = 525.0
-
         mock_client.get_activities.return_value = [mock_activity]
-        mock_client.get_activity.return_value = mock_detail
         mock_create_client.return_value = mock_client
 
         strategy = StravaActivitySyncStrategy()
         activities = strategy.fetch_activities(test_user_with_strava_tokens)
 
-        assert activities[0]["calories"] == 525.0
-        mock_client.get_activity.assert_called_once_with(1001)
+        assert activities[0]["calories"] is None
+        mock_client.get_activity.assert_not_called()
 
     @patch("app.integrations.strava.strategies.time.sleep")
     @patch("app.integrations.strava.strategies.StravaClientFactory.create_authenticated_client")
@@ -183,19 +182,9 @@ class TestStravaActivitySyncStrategy:
     ):
         """Test detailed calorie fetch retries after Strava rate limits."""
         mock_client = Mock()
-        mock_activity = Mock()
-        mock_activity.id = 1001
-        mock_activity.name = "Morning Ride"
-        mock_activity.distance = Mock(magnitude=15000.0)
-        mock_activity.moving_time = Mock(total_seconds=lambda: 3600)
-        mock_activity.elapsed_time = Mock(total_seconds=lambda: 3700)
-        mock_activity.total_elevation_gain = Mock(magnitude=250.0)
-        mock_activity.calories = None
-
         mock_detail = Mock()
         mock_detail.calories = 525.0
 
-        mock_client.get_activities.return_value = [mock_activity]
         mock_client.get_activity.side_effect = [
             RateLimitExceeded("Short term API rate limit exceeded", timeout=1),
             mock_detail,
@@ -203,11 +192,43 @@ class TestStravaActivitySyncStrategy:
         mock_create_client.return_value = mock_client
 
         strategy = StravaActivitySyncStrategy()
-        activities = strategy.fetch_activities(test_user_with_strava_tokens)
+        calories_by_activity_id = strategy.fetch_activity_calories_batch(
+            test_user_with_strava_tokens,
+            [1001],
+        )
 
-        assert activities[0]["calories"] == 525.0
+        assert calories_by_activity_id == {1001: 525.0}
         mock_sleep.assert_called_once_with(1)
         assert mock_client.get_activity.call_count == 2
+
+    @patch("app.integrations.strava.strategies.time.sleep")
+    def test_rate_limit_retry_logs_wait_and_next_attempt(self, mock_sleep):
+        """Test rate limit retries log wait time and next retry step."""
+        logger = Mock()
+        operation = Mock(
+            side_effect=[
+                RateLimitExceeded("Short term API rate limit exceeded", timeout=1),
+                "ok",
+            ]
+        )
+
+        result = _call_with_rate_limit_backoff(logger, operation, "fetch Strava activities")
+
+        assert result == "ok"
+        mock_sleep.assert_called_once_with(1)
+        logger.warning.assert_called_once_with(
+            "Strava rate limit while trying to %s: %s. Retry %s/%s will wait "
+            "%s seconds before next attempt %s/%s.",
+            "fetch Strava activities",
+            ANY,
+            1,
+            6,
+            1,
+            2,
+            7,
+        )
+        logged_message = logger.warning.call_args.args[2]
+        assert logged_message == "Strava API rate limit exceeded"
 
 
 @pytest.mark.unit

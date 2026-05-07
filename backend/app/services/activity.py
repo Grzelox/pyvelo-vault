@@ -63,3 +63,13 @@ class ActivityService:
         if new_activities:
             return self.activity_repo.create_many(new_activities)
         return 0
+
+    def get_activities_missing_calories(
+        self, user_id: int, activity_ids: list[int] | None = None
+    ) -> List[Activity]:
+        """Get user activities that need calorie backfill."""
+        return self.activity_repo.get_missing_calories_by_user(user_id, activity_ids=activity_ids)
+
+    def update_activity_calories(self, activity_id: int, user_id: int, calories: float) -> bool:
+        """Update calories for one user-owned activity."""
+        return self.activity_repo.update_calories(activity_id, user_id, calories)

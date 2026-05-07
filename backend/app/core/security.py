@@ -14,6 +14,7 @@ from jose import JWTError, jwt
 SECRET_KEY = os.getenv("SECRET_KEY", "mock-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REMEMBER_ME_ACCESS_TOKEN_EXPIRE_DAYS = 30
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

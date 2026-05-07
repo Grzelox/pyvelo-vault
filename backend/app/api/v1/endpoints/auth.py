@@ -6,15 +6,21 @@ The container is reserved for Celery tasks and other non-request contexts.
 
 from datetime import timedelta
 
-from app.core import ACCESS_TOKEN_EXPIRE_MINUTES, get_db
+from app.core import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REMEMBER_ME_ACCESS_TOKEN_EXPIRE_DAYS,
+    get_db,
+    get_logger,
+)
 from app.repositories import UserRepository
 from app.schemas import Token, User, UserCreate
 from app.services import UserService
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Form, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 @router.post("/register", response_model=User)
@@ -49,6 +55,7 @@ def register_user(
 @router.post("/token", response_model=Token)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
+    remember_me: bool = Form(False),
     db: Session = Depends(get_db),
 ):
     """Login and receive a JWT access token.
@@ -71,12 +78,22 @@ async def login(
 
     user = user_service.authenticate(form_data.username, form_data.password)
     if not user:
+        logger.warning("Failed login attempt for %s.", form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    if remember_me:
+        access_token_expires = timedelta(days=REMEMBER_ME_ACCESS_TOKEN_EXPIRE_DAYS)
+    else:
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
     access_token = user_service.create_access_token(user, expires_delta=access_token_expires)
-    return {"access_token": access_token, "token_type": "bearer"}
+    logger.info("User %s logged in. remember_me=%s", user.id, remember_me)
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": int(access_token_expires.total_seconds()),
+    }

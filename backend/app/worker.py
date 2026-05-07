@@ -53,6 +53,16 @@ def sync_single_user_strava_activities_task(user_id: int):
 
 
 @celery.task
+def fill_missing_strava_activity_calories_task(user_id: int, activity_ids: list[int]):
+    """Celery task wrapper for Strava calorie backfill."""
+    from app.integrations.strava.tasks import (
+        fill_missing_strava_activity_calories_task as fill_func,
+    )
+
+    return fill_func(user_id, activity_ids)
+
+
+@celery.task
 def sync_single_user_garmin_activities_task(user_id: int):
     """Celery task wrapper for Garmin activity sync (delta sync)."""
     from app.integrations.garmin.tasks import sync_single_user_garmin_activities_task as sync_func

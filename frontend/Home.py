@@ -4,54 +4,40 @@ from datetime import datetime, timedelta
 import pandas as pd
 import requests
 import streamlit as st
+from auth import initialize_auth_state
+from auth import logout as auth_logout
 from logging_service import get_frontend_logger
 from theme import inject_theme_variables
 
 
-def prepare_daily_distance_chart(df: pd.DataFrame, days: int = 30) -> pd.DataFrame:
-    """Prepare daily distance data for the last N days.
-
-    Args:
-        df: DataFrame with activities containing 'start_date' and 'distance_km'.
-        days: Number of days to show (default 30).
-
-    Returns:
-        DataFrame with daily distance, indexed by date.
-    """
-    if df.empty or "start_date" not in df.columns:
+def prepare_daily_distance_chart(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
+    """Prepare daily distance data for the selected date range."""
+    if df.empty or "start_date" not in df.columns or "distance_km" not in df.columns:
         return pd.DataFrame()
 
-    # Filter out rows without start_date
+    if start_date > end_date:
+        return pd.DataFrame()
+
+    all_days = pd.date_range(start=start_date, end=end_date, freq="D").date
+    full_daily = pd.Series(0.0, index=pd.Index(all_days, name="Date"))
+
     df_with_date = df[df["start_date"].notna()].copy()
     if df_with_date.empty:
         return pd.DataFrame()
 
-    # Convert start_date to datetime and remove timezone for simpler handling
     df_with_date["start_date"] = pd.to_datetime(
         df_with_date["start_date"], utc=True
     ).dt.tz_localize(None)
-
-    # Extract date only (no time)
     df_with_date["date"] = df_with_date["start_date"].dt.date
 
-    # Filter for last N days
-    cutoff_date = (datetime.now() - timedelta(days=days)).date()
-    df_filtered = df_with_date[df_with_date["date"] >= cutoff_date].copy()
+    df_filtered = df_with_date[
+        (df_with_date["date"] >= start_date) & (df_with_date["date"] <= end_date)
+    ].copy()
+    if df_filtered.empty:
+        return full_daily.to_frame(name="Distance (km)")
 
-    # Group by date and sum km
     daily_km = df_filtered.groupby("date")["distance_km"].sum()
 
-    # Create a complete date range for the last N days
-    all_days = pd.date_range(
-        start=datetime.now() - timedelta(days=days),
-        end=datetime.now(),
-        freq="D",
-    ).date
-
-    # Create full DataFrame with all days initialized to 0
-    full_daily = pd.Series(0.0, index=pd.Index(all_days, name="Date"))
-
-    # Update with actual values
     for date, km in daily_km.items():
         if date in full_daily.index:
             full_daily.loc[date] = km
@@ -142,53 +128,13 @@ logger = get_frontend_logger(__name__)
 # --- API Configuration ---
 API_URL = os.getenv("API_URL", "http://api:8000")
 
-# --- Initialize Session State ---
-if "access_token" not in st.session_state:
-    st.session_state.access_token = None
-if "user" not in st.session_state:
-    st.session_state.user = None
-
 inject_theme_variables()
-
-
-# --- Authentication Functions ---
-def login(email: str, password: str):
-    """Attempt to log in and store the token."""
-    try:
-        response = requests.post(
-            f"{API_URL}/api/v1/token", data={"username": email, "password": password}
-        )
-        response.raise_for_status()
-        token_data = response.json()
-        st.session_state.access_token = token_data["access_token"]
-
-        # Get user info
-        user_response = requests.get(
-            f"{API_URL}/api/v1/users/me",
-            headers={"Authorization": f"Bearer {st.session_state.access_token}"},
-        )
-        user_response.raise_for_status()
-        st.session_state.user = user_response.json()
-        logger.info(
-            "User %s logged in via Home page.",
-            st.session_state.user.get("id", "unknown"),
-        )
-        return True
-    except requests.exceptions.RequestException as e:
-        logger.exception("Login failed for %s", email)
-        st.error(f"Login failed: {e}")
-        return False
+initialize_auth_state(API_URL, logger)
 
 
 def logout():
     """Clear the session state."""
-    if st.session_state.user:
-        logger.info(
-            "User %s logged out from Home page.",
-            st.session_state.user.get("id", "unknown"),
-        )
-    st.session_state.access_token = None
-    st.session_state.user = None
+    auth_logout(logger, "Home page")
 
 
 # --- UI ---
@@ -236,8 +182,6 @@ if not st.session_state.access_token:
         with st.container(border=True):
             st.markdown("### Secure Storage")
             st.write("Keep your activity history in your own stack.")
-
-    st.info("**Demo credentials:** email: `demo@pyvelo-vault.com`, password: `demo123`")
 
 else:
     # Show user info and action buttons
@@ -402,17 +346,36 @@ else:
 
             # --- Daily Distance Chart ---
             with st.container(border=True):
-                st.subheader("Daily Distance (Last 30 Days)")
-                daily_chart_data = prepare_daily_distance_chart(df, days=30)
+                st.subheader("Daily Distance")
+                distance_default_end_date = datetime.now().date()
+                distance_default_start_date = distance_default_end_date - timedelta(days=29)
+                selected_distance_date_range = st.date_input(
+                    "Distance date range",
+                    value=(distance_default_start_date, distance_default_end_date),
+                    max_value=distance_default_end_date,
+                )
 
-                if not daily_chart_data.empty:
-                    st.line_chart(
-                        daily_chart_data,
-                        use_container_width=True,
-                        height=300,
+                if (
+                    isinstance(selected_distance_date_range, tuple)
+                    and len(selected_distance_date_range) == 2
+                ):
+                    distance_start_date, distance_end_date = selected_distance_date_range
+                    daily_chart_data = prepare_daily_distance_chart(
+                        df,
+                        distance_start_date,
+                        distance_end_date,
                     )
+
+                    if not daily_chart_data.empty:
+                        st.line_chart(
+                            daily_chart_data,
+                            use_container_width=True,
+                            height=300,
+                        )
+                    else:
+                        st.info("No activities with dates available for the chart.")
                 else:
-                    st.info("No activities with dates available for the chart.")
+                    st.info("Select a start and end date to show distance.")
 
             # --- Activities Table ---
             with st.container(border=True):
@@ -429,8 +392,18 @@ else:
                 ]
 
                 # Format start_date for display if it exists
+                display_df = df[display_columns].copy()
                 if "start_date" in df.columns:
-                    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
+                    display_df["start_date"] = pd.to_datetime(
+                        display_df["start_date"],
+                        errors="coerce",
+                        utc=True,
+                    ).dt.tz_localize(None)
+                    display_df = display_df.sort_values(
+                        by="start_date",
+                        ascending=False,
+                        na_position="last",
+                    )
 
                 # Configure column display
                 column_config = {
@@ -463,7 +436,7 @@ else:
                 }
 
                 st.dataframe(
-                    df[display_columns],
+                    display_df,
                     column_config=column_config,
                     use_container_width=True,
                     hide_index=True,

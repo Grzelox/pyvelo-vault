@@ -2,6 +2,8 @@ import os
 
 import requests
 import streamlit as st
+from auth import initialize_auth_state
+from auth import logout as auth_logout
 from logging_service import get_frontend_logger
 from theme import inject_theme_variables
 
@@ -18,24 +20,13 @@ logger = get_frontend_logger(__name__)
 # --- API Configuration ---
 API_URL = os.getenv("API_URL", "http://api:8000")
 
-# --- Initialize Session State ---
-if "access_token" not in st.session_state:
-    st.session_state.access_token = None
-if "user" not in st.session_state:
-    st.session_state.user = None
-
 inject_theme_variables()
+initialize_auth_state(API_URL, logger)
 
 
 def logout():
     """Clear the session state."""
-    if st.session_state.user:
-        logger.info(
-            "User %s logged out via Settings page.",
-            st.session_state.user.get("id", "unknown"),
-        )
-    st.session_state.access_token = None
-    st.session_state.user = None
+    auth_logout(logger, "Settings page")
 
 
 def disconnect_strava():
@@ -135,22 +126,9 @@ with st.container(border=True):
     st.subheader("Coming Soon")
     st.write("More integrations will be available soon.")
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        with st.container(border=True):
-            st.markdown("### Garmin Connect")
-            st.caption("Coming Soon")
-
-    with col2:
-        with st.container(border=True):
-            st.markdown("### Apple Health")
-            st.caption("Coming Soon")
-
-    with col3:
-        with st.container(border=True):
-            st.markdown("### Zwift")
-            st.caption("Coming Soon")
+    with st.container(border=True):
+        st.markdown("### Garmin Connect")
+        st.caption("Coming Soon")
 
 # Account Actions section
 with st.container(border=True):
