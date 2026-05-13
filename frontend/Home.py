@@ -190,180 +190,288 @@ try:
             df["calories"] = pd.NA
         if "activity_type" not in df.columns:
             df["activity_type"] = pd.NA
+        df["activity_type_filter"] = (
+            df["activity_type"]
+            .astype("string")
+            .fillna("Unknown")
+            .str.strip()
+            .replace("", "Unknown")
+        )
+        activity_type_options = sorted(df["activity_type_filter"].unique().tolist())
+
         with st.container(border=True):
-            st.subheader("Daily Calories")
-            default_end_date = datetime.now().date()
-            default_start_date = default_end_date - timedelta(days=13)
-            selected_date_range = st.date_input(
-                "Date range",
-                value=(default_start_date, default_end_date),
-                max_value=default_end_date,
+            st.subheader("Filters")
+            selected_activity_types = st.multiselect(
+                "Activity types",
+                options=activity_type_options,
+                default=activity_type_options,
+                help="Filter charts and activity details by selected types.",
             )
-            if isinstance(selected_date_range, tuple) and len(selected_date_range) == 2:
-                start_date, end_date = selected_date_range
-                calories_chart_data = prepare_daily_calories_chart(df, start_date, end_date)
-                seven_day_average = calculate_average_daily_calories(
-                    df,
-                    default_end_date - timedelta(days=6),
-                    default_end_date,
-                )
-                twenty_eight_day_average = calculate_average_daily_calories(
-                    df,
-                    default_end_date - timedelta(days=27),
-                    default_end_date,
-                )
-                selected_range_average = calculate_average_daily_calories(
-                    df,
-                    start_date,
-                    end_date,
-                )
-                seven_day_active_average = calculate_average_active_day_calories(
-                    df,
-                    default_end_date - timedelta(days=6),
-                    default_end_date,
-                )
-                twenty_eight_day_active_average = calculate_average_active_day_calories(
-                    df,
-                    default_end_date - timedelta(days=27),
-                    default_end_date,
-                )
-                selected_range_active_average = calculate_average_active_day_calories(
-                    df,
-                    start_date,
-                    end_date,
-                )
-                metric_col1, metric_col2, metric_col3 = st.columns(3)
-                with metric_col1:
-                    st.metric(
-                        "Avg kcal/day (7 days)",
-                        format_kcal_metric(seven_day_average),
+            global_default_end_date = datetime.now().date()
+            global_default_start_date = global_default_end_date - timedelta(days=29)
+            selected_global_date_range = st.date_input(
+                "Data date range",
+                value=(global_default_start_date, global_default_end_date),
+                max_value=global_default_end_date,
+                help="Used by all charts and tables below.",
+            )
+
+        filtered_df = df[df["activity_type_filter"].isin(selected_activity_types)].copy()
+
+        if filtered_df.empty:
+            st.info("No activities match the selected activity types.")
+        else:
+            with st.container(border=True):
+                st.subheader("Daily Calories")
+                if (
+                    isinstance(selected_global_date_range, tuple)
+                    and len(selected_global_date_range) == 2
+                ):
+                    start_date, end_date = selected_global_date_range
+                    calories_chart_data = prepare_daily_calories_chart(
+                        filtered_df, start_date, end_date
                     )
-                with metric_col2:
-                    st.metric(
-                        "Avg kcal/day (28 days)",
-                        format_kcal_metric(twenty_eight_day_average),
+                    seven_day_average = calculate_average_daily_calories(
+                        filtered_df,
+                        end_date - timedelta(days=6),
+                        end_date,
                     )
-                with metric_col3:
-                    st.metric(
-                        "Avg kcal/day (selected)",
-                        format_kcal_metric(selected_range_average),
+                    twenty_eight_day_average = calculate_average_daily_calories(
+                        filtered_df,
+                        end_date - timedelta(days=27),
+                        end_date,
                     )
-                active_metric_col1, active_metric_col2, active_metric_col3 = st.columns(3)
-                with active_metric_col1:
-                    st.metric(
-                        "Avg kcal/active day (7 days)",
-                        format_kcal_metric(seven_day_active_average),
+                    selected_range_average = calculate_average_daily_calories(
+                        filtered_df,
+                        start_date,
+                        end_date,
                     )
-                with active_metric_col2:
-                    st.metric(
-                        "Avg kcal/active day (28 days)",
-                        format_kcal_metric(twenty_eight_day_active_average),
+                    seven_day_active_average = calculate_average_active_day_calories(
+                        filtered_df,
+                        end_date - timedelta(days=6),
+                        end_date,
                     )
-                with active_metric_col3:
-                    st.metric(
-                        "Avg kcal/active day (selected)",
-                        format_kcal_metric(selected_range_active_average),
+                    twenty_eight_day_active_average = calculate_average_active_day_calories(
+                        filtered_df,
+                        end_date - timedelta(days=27),
+                        end_date,
                     )
-                if not calories_chart_data.empty:
-                    st.bar_chart(
-                        calories_chart_data,
-                        use_container_width=True,
-                        height=300,
+                    selected_range_active_average = calculate_average_active_day_calories(
+                        filtered_df,
+                        start_date,
+                        end_date,
                     )
+                    metric_col1, metric_col2, metric_col3 = st.columns(3)
+                    with metric_col1:
+                        st.metric(
+                            "Avg kcal/day (7 days)",
+                            format_kcal_metric(seven_day_average),
+                        )
+                    with metric_col2:
+                        st.metric(
+                            "Avg kcal/day (28 days)",
+                            format_kcal_metric(twenty_eight_day_average),
+                        )
+                    with metric_col3:
+                        st.metric(
+                            "Avg kcal/day (selected)",
+                            format_kcal_metric(selected_range_average),
+                        )
+                    active_metric_col1, active_metric_col2, active_metric_col3 = st.columns(3)
+                    with active_metric_col1:
+                        st.metric(
+                            "Avg kcal/active day (7 days)",
+                            format_kcal_metric(seven_day_active_average),
+                        )
+                    with active_metric_col2:
+                        st.metric(
+                            "Avg kcal/active day (28 days)",
+                            format_kcal_metric(twenty_eight_day_active_average),
+                        )
+                    with active_metric_col3:
+                        st.metric(
+                            "Avg kcal/active day (selected)",
+                            format_kcal_metric(selected_range_active_average),
+                        )
+                    if not calories_chart_data.empty:
+                        st.bar_chart(
+                            calories_chart_data,
+                            use_container_width=True,
+                            height=300,
+                        )
+                    else:
+                        st.info("No calories found for the selected date range.")
                 else:
-                    st.info("No calories found for the selected date range.")
-            else:
-                st.info("Select a start and end date to show calories.")
-        with st.container(border=True):
-            st.subheader("Daily Distance")
-            distance_default_end_date = datetime.now().date()
-            distance_default_start_date = distance_default_end_date - timedelta(days=29)
-            selected_distance_date_range = st.date_input(
-                "Distance date range",
-                value=(distance_default_start_date, distance_default_end_date),
-                max_value=distance_default_end_date,
-            )
-            if (
-                isinstance(selected_distance_date_range, tuple)
-                and len(selected_distance_date_range) == 2
-            ):
-                distance_start_date, distance_end_date = selected_distance_date_range
-                daily_chart_data = prepare_daily_distance_chart(
-                    df,
-                    distance_start_date,
-                    distance_end_date,
-                )
-                if not daily_chart_data.empty:
-                    st.line_chart(
-                        daily_chart_data,
-                        use_container_width=True,
-                        height=300,
+                    st.info("Select a start and end date in Filters to show calories.")
+            with st.container(border=True):
+                st.subheader("Daily Distance")
+                if (
+                    isinstance(selected_global_date_range, tuple)
+                    and len(selected_global_date_range) == 2
+                ):
+                    distance_start_date, distance_end_date = selected_global_date_range
+                    daily_chart_data = prepare_daily_distance_chart(
+                        filtered_df,
+                        distance_start_date,
+                        distance_end_date,
                     )
+                    if not daily_chart_data.empty:
+                        st.line_chart(
+                            daily_chart_data,
+                            use_container_width=True,
+                            height=300,
+                        )
+                    else:
+                        st.info("No activities with dates available for the chart.")
                 else:
-                    st.info("No activities with dates available for the chart.")
-            else:
-                st.info("Select a start and end date to show distance.")
-        with st.container(border=True):
-            st.subheader("Activity Details")
-            display_columns = [
-                "name",
-                "activity_type",
-                "start_date",
-                "distance_km",
-                "moving_time_hr",
-                "total_elevation_gain",
-                "calories",
-            ]
-            display_df = df[display_columns].copy()
-            if "start_date" in df.columns:
-                parsed_start_dates = pd.DatetimeIndex(
-                    pd.to_datetime(
-                        display_df["start_date"],
-                        errors="coerce",
-                        utc=True,
-                    )
-                ).tz_localize(None)
-                display_df["start_date"] = parsed_start_dates.to_numpy()
-                display_df = display_df.sort_values(
-                    by="start_date",
-                    ascending=False,
-                    na_position="last",
+                    st.info("Select a start and end date in Filters to show distance.")
+            with st.container(border=True):
+                st.subheader("Activity Details")
+                display_columns = [
+                    "name",
+                    "activity_type",
+                    "start_date",
+                    "distance_km",
+                    "moving_time_hr",
+                    "total_elevation_gain",
+                    "calories",
+                ]
+                display_df = filtered_df[display_columns].copy()
+                display_df["activity_type"] = (
+                    display_df["activity_type"]
+                    .astype("string")
+                    .fillna("Unknown")
+                    .str.strip()
+                    .replace("", "Unknown")
                 )
-            column_config = {
-                "name": st.column_config.TextColumn("Name", width="medium"),
-                "activity_type": st.column_config.TextColumn("Type", width="small"),
-                "start_date": st.column_config.DatetimeColumn(
-                    "Date",
-                    format="DD MMM YYYY, HH:mm",
-                    width="medium",
-                ),
-                "distance_km": st.column_config.NumberColumn(
-                    "Distance (km)",
-                    format="%.2f",
-                    width="small",
-                ),
-                "moving_time_hr": st.column_config.NumberColumn(
-                    "Moving Time (hr)",
-                    format="%.2f",
-                    width="small",
-                ),
-                "total_elevation_gain": st.column_config.NumberColumn(
-                    "Elevation (m)",
-                    format="%.0f",
-                    width="small",
-                ),
-                "calories": st.column_config.NumberColumn(
-                    "Calories (kcal)",
-                    format="%.0f",
-                    width="small",
-                ),
-            }
-            st.dataframe(
-                display_df,
-                column_config=column_config,
-                use_container_width=True,
-                hide_index=True,
-            )
+                if "start_date" in filtered_df.columns:
+                    parsed_start_dates = pd.DatetimeIndex(
+                        pd.to_datetime(
+                            display_df["start_date"],
+                            errors="coerce",
+                            utc=True,
+                        )
+                    ).tz_localize(None)
+                    display_df["start_date"] = parsed_start_dates.to_numpy()
+                    if (
+                        isinstance(selected_global_date_range, tuple)
+                        and len(selected_global_date_range) == 2
+                    ):
+                        details_start_date, details_end_date = selected_global_date_range
+                        display_df = display_df[
+                            display_df["start_date"].dt.date.between(
+                                details_start_date,
+                                details_end_date,
+                            )
+                        ].copy()
+                    display_df = display_df.sort_values(
+                        by="start_date",
+                        ascending=False,
+                        na_position="last",
+                    )
+                column_config = {
+                    "name": st.column_config.TextColumn("Name", width="medium"),
+                    "activity_type": st.column_config.TextColumn("Type", width="small"),
+                    "start_date": st.column_config.DatetimeColumn(
+                        "Date",
+                        format="DD MMM YYYY, HH:mm",
+                        width="medium",
+                    ),
+                    "distance_km": st.column_config.NumberColumn(
+                        "Distance (km)",
+                        format="%.2f",
+                        width="small",
+                    ),
+                    "moving_time_hr": st.column_config.NumberColumn(
+                        "Moving Time (hr)",
+                        format="%.2f",
+                        width="small",
+                    ),
+                    "total_elevation_gain": st.column_config.NumberColumn(
+                        "Elevation (m)",
+                        format="%.0f",
+                        width="small",
+                    ),
+                    "calories": st.column_config.NumberColumn(
+                        "Calories (kcal)",
+                        format="%.0f",
+                        width="small",
+                    ),
+                }
+                st.dataframe(
+                    display_df,
+                    column_config=column_config,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            with st.container(border=True):
+                st.subheader("Activity Type Summary")
+                if (
+                    isinstance(selected_global_date_range, tuple)
+                    and len(selected_global_date_range) == 2
+                ):
+                    summary_start_date, summary_end_date = selected_global_date_range
+                    summary_df = filtered_df[
+                        ["activity_type_filter", "start_date", "distance_km", "calories"]
+                    ].copy()
+                    parsed_summary_dates = pd.DatetimeIndex(
+                        pd.to_datetime(
+                            summary_df["start_date"],
+                            errors="coerce",
+                            utc=True,
+                        )
+                    ).tz_localize(None)
+                    summary_df["activity_date"] = parsed_summary_dates.date
+                    summary_df = summary_df[summary_df["activity_date"].notna()].copy()
+                    summary_df = summary_df[
+                        (summary_df["activity_date"] >= summary_start_date)
+                        & (summary_df["activity_date"] <= summary_end_date)
+                    ].copy()
+
+                    if summary_df.empty:
+                        st.info("No activities found for the selected date range.")
+                    else:
+                        summary_table = (
+                            summary_df.groupby("activity_type_filter", dropna=False)
+                            .agg(
+                                activities=("activity_type_filter", "size"),
+                                total_distance_km=("distance_km", "sum"),
+                                total_calories=("calories", "sum"),
+                            )
+                            .reset_index()
+                            .rename(columns={"activity_type_filter": "activity_type"})
+                            .sort_values(by="activities", ascending=False)
+                        )
+                        st.dataframe(
+                            summary_table,
+                            column_config={
+                                "activity_type": st.column_config.TextColumn(
+                                    "Activity Type",
+                                    width="medium",
+                                ),
+                                "activities": st.column_config.NumberColumn(
+                                    "Activities",
+                                    format="%d",
+                                    width="small",
+                                ),
+                                "total_distance_km": st.column_config.NumberColumn(
+                                    "Total Distance (km)",
+                                    format="%.2f",
+                                    width="medium",
+                                ),
+                                "total_calories": st.column_config.NumberColumn(
+                                    "Total Calories (kcal)",
+                                    format="%.0f",
+                                    width="medium",
+                                ),
+                            },
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                else:
+                    st.info(
+                        "Select a start and end date in Filters to show summary by activity type."
+                    )
     else:
         with st.container(border=True):
             st.subheader("No activities yet")
