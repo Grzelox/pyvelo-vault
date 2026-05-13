@@ -1,5 +1,6 @@
 """Activity repository for data access operations."""
 
+from datetime import datetime
 from typing import List
 
 from app.models import Activity
@@ -30,6 +31,18 @@ class ActivityRepository(BaseRepository[Activity]):
         """
         return self.db.query(Activity).filter(Activity.owner_id == user_id).all()
 
+    def get_latest_activity_start_date(self, user_id: int) -> datetime | None:
+        """Get the most recent non-null activity start_date for a user."""
+        latest_activity = (
+            self.db.query(Activity)
+            .filter(Activity.owner_id == user_id, Activity.start_date.isnot(None))
+            .order_by(Activity.start_date.desc())
+            .first()
+        )
+        if latest_activity is None:
+            return None
+        return latest_activity.start_date
+
     def get_missing_calories_by_user(
         self, user_id: int, activity_ids: list[int] | None = None
     ) -> List[Activity]:
@@ -37,6 +50,20 @@ class ActivityRepository(BaseRepository[Activity]):
         query = self.db.query(Activity).filter(
             Activity.owner_id == user_id,
             Activity.calories.is_(None),
+        )
+        if activity_ids is not None:
+            if not activity_ids:
+                return []
+            query = query.filter(Activity.id.in_(activity_ids))
+        return query.order_by(Activity.start_date.desc()).all()
+
+    def get_missing_activity_type_by_user(
+        self, user_id: int, activity_ids: list[int] | None = None
+    ) -> List[Activity]:
+        """Get user activities that still need activity type backfill."""
+        query = self.db.query(Activity).filter(
+            Activity.owner_id == user_id,
+            Activity.activity_type.is_(None),
         )
         if activity_ids is not None:
             if not activity_ids:
@@ -82,5 +109,19 @@ class ActivityRepository(BaseRepository[Activity]):
             return False
 
         activity.calories = calories
+        self.db.commit()
+        return True
+
+    def update_activity_type(self, activity_id: int, user_id: int, activity_type: str) -> bool:
+        """Update activity type for a single user-owned activity."""
+        activity = (
+            self.db.query(Activity)
+            .filter(Activity.id == activity_id, Activity.owner_id == user_id)
+            .first()
+        )
+        if activity is None:
+            return False
+
+        activity.activity_type = activity_type
         self.db.commit()
         return True

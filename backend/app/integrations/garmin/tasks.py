@@ -45,11 +45,19 @@ def sync_single_user_garmin_activities_task(
                 logger.warning("User %s not found during Garmin sync.", user_id)
                 return {"status": "error", "message": "User not found"}
 
-            sync_after_date = user.last_garmin_sync or datetime(2000, 1, 1, tzinfo=timezone.utc)
+            latest_activity_start = activity_repo.get_latest_activity_start_date(user.id)
+            if latest_activity_start:
+                sync_after_date = datetime.combine(
+                    latest_activity_start.date(),
+                    datetime.min.time(),
+                    tzinfo=timezone.utc,
+                )
+            else:
+                sync_after_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
             logger.info(
-                "Fetching Garmin activities for user_id=%s after %s",
+                "Fetching Garmin activities for user_id=%s from local latest activity date %s",
                 user.id,
-                sync_after_date,
+                sync_after_date.date().isoformat(),
             )
 
             sync_strategy = GarminActivitySyncStrategy()

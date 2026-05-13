@@ -19,12 +19,9 @@ class GarminActivitySyncStrategy(ActivitySyncStrategy):
         self._logger = get_logger(__name__)
 
     def is_connected(self, user: User) -> bool:
-        # We store the per-user tokenstore directory path in garmin_access_token
-        # to avoid storing Garmin passwords.
         return bool(user.garmin_access_token)
 
     def refresh_token_if_needed(self, user: User) -> dict | None:
-        # Token refresh is handled internally by garth/python-garminconnect.
         return None
 
     def fetch_activities(self, user: User, after: datetime | None = None) -> list[dict]:
@@ -62,7 +59,6 @@ class GarminActivitySyncStrategy(ActivitySyncStrategy):
 def _normalize_garmin_activity(raw: dict[str, Any]) -> dict[str, Any] | None:
     """Best-effort normalization for common Garmin field names."""
     try:
-        # IDs are often numeric but may be strings in some APIs
         activity_id = raw.get("activityId") or raw.get("id")
         if activity_id is None:
             return None
@@ -70,7 +66,6 @@ def _normalize_garmin_activity(raw: dict[str, Any]) -> dict[str, Any] | None:
 
         name = raw.get("activityName") or raw.get("name") or "Garmin Activity"
 
-        # Units: assume meters/seconds where possible
         distance = raw.get("distance") or raw.get("distanceInMeters") or 0.0
         distance = float(distance)
 
@@ -97,7 +92,6 @@ def _normalize_garmin_activity(raw: dict[str, Any]) -> dict[str, Any] | None:
         if isinstance(start_date, (int, float)):
             start_date_dt = datetime.fromtimestamp(int(start_date), tz=timezone.utc)
         elif isinstance(start_date, str):
-            # Best-effort ISO parsing; fall back to None if format is unknown
             try:
                 start_date_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
                 if start_date_dt.tzinfo is None:

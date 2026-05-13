@@ -51,6 +51,7 @@ class ActivitySyncStrategy(ABC):
               "elapsed_time": int,  # seconds
               "total_elevation_gain": float,  # meters
               "calories": float | None,  # kcal
+              "activity_type": str | None,  # provider category, e.g. Ride
               "start_date": datetime (timezone-aware preferred)
             }
         """

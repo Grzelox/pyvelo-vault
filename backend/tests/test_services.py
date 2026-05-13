@@ -209,6 +209,38 @@ class TestActivityService:
 
         assert count == 0  # Should not import duplicate
 
+    def test_import_activities_backfills_activity_type_for_existing(
+        self,
+        test_db,
+        test_user,
+        test_activities,
+    ):
+        """Test duplicate import updates missing activity type on existing rows."""
+        activity_repo = ActivityRepository(test_db)
+        service = ActivityService(activity_repo)
+
+        test_activities[0].activity_type = None
+        test_db.commit()
+
+        activities_data = [
+            {
+                "id": test_activities[0].id,
+                "name": test_activities[0].name,
+                "distance": test_activities[0].distance,
+                "moving_time": test_activities[0].moving_time,
+                "elapsed_time": test_activities[0].elapsed_time,
+                "total_elevation_gain": test_activities[0].total_elevation_gain,
+                "calories": test_activities[0].calories,
+                "activity_type": "Ride",
+            }
+        ]
+
+        count = service.import_activities(activities_data, test_user.id)
+
+        assert count == 0
+        test_db.refresh(test_activities[0])
+        assert test_activities[0].activity_type == "Ride"
+
     def test_import_activities_mixed(self, test_db, test_user, test_activities):
         """Test importing a mix of new and existing activities."""
         activity_repo = ActivityRepository(test_db)
@@ -264,3 +296,30 @@ class TestActivityService:
         assert updated is True
         test_db.refresh(test_activities[0])
         assert test_activities[0].calories == 555.0
+
+    def test_get_activities_missing_activity_type(self, test_db, test_user, test_activities):
+        """Test getting activities that need activity type backfill."""
+        test_activities[0].activity_type = None
+        test_activities[1].activity_type = "Ride"
+        test_db.commit()
+
+        activity_repo = ActivityRepository(test_db)
+        service = ActivityService(activity_repo)
+
+        activities = service.get_activities_missing_activity_type(test_user.id)
+
+        assert [activity.id for activity in activities] == [test_activities[0].id]
+
+    def test_update_activity_type(self, test_db, test_user, test_activities):
+        """Test updating activity type through service layer."""
+        test_activities[0].activity_type = None
+        test_db.commit()
+
+        activity_repo = ActivityRepository(test_db)
+        service = ActivityService(activity_repo)
+
+        updated = service.update_activity_type(test_activities[0].id, test_user.id, "Ride")
+
+        assert updated is True
+        test_db.refresh(test_activities[0])
+        assert test_activities[0].activity_type == "Ride"

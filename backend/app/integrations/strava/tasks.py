@@ -21,6 +21,8 @@ logger = get_logger(__name__)
 
 _CALORIE_BACKFILL_BATCH_SIZE = 10
 _CALORIE_BACKFILL_BATCH_DELAY_SECONDS = 60
+_ACTIVITY_TYPE_BACKFILL_BATCH_SIZE = 10
+_ACTIVITY_TYPE_BACKFILL_BATCH_DELAY_SECONDS = 60
 
 
 @inject
@@ -35,7 +37,8 @@ def sync_single_user_strava_activities_task(
 
     This task uses the Strategy pattern to fetch activities from Strava
     and the Repository/Service patterns to save them to the database.
-    It implements delta sync by only fetching activities after the last sync.
+    It implements delta sync by fetching activities from the date of
+    the latest activity already stored for the user.
 
     Dependencies are injected via the DI container:
     - db_session: Database session Resource (auto-managed lifecycle)
@@ -64,9 +67,21 @@ def sync_single_user_strava_activities_task(
                 logger.warning("User %s not found during Strava sync.", user_id)
                 return {"status": "error", "message": "User not found"}
 
-            # Determine the sync start date (delta sync)
-            sync_after_date = user.last_strava_sync or datetime(2000, 1, 1, tzinfo=timezone.utc)
-            logger.info("Fetching activities for user_id=%s after %s", user.id, sync_after_date)
+            latest_activity_start = activity_repo.get_latest_activity_start_date(user.id)
+            if latest_activity_start:
+                sync_after_date = datetime.combine(
+                    latest_activity_start.date(),
+                    datetime.min.time(),
+                    tzinfo=timezone.utc,
+                )
+            else:
+                sync_after_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+            logger.info(
+                "Fetching activities for user_id=%s from local latest activity date %s",
+                user.id,
+                sync_after_date.date().isoformat(),
+            )
 
             sync_strategy = StravaActivitySyncStrategy()
             logger.info("Strava sync user_id=%s: checking Strava connection.", user_id)
@@ -77,8 +92,6 @@ def sync_single_user_strava_activities_task(
             logger.info("Strava sync user_id=%s: checking access token freshness.", user_id)
             token_update = sync_strategy.refresh_token_if_needed(user)
             if token_update:
-                # Strava refresh tokens rotate. Persist immediately so a later
-                # activity-fetch failure does not leave us with an invalid token.
                 logger.info("Strava sync user_id=%s: persisting refreshed token.", user_id)
                 user_repo.update(user)
             else:
@@ -92,7 +105,6 @@ def sync_single_user_strava_activities_task(
                 len(activities_data),
             )
 
-            # Import activities using service layer
             logger.info(
                 "Strava sync user_id=%s: importing %s activities into database.",
                 user_id,
@@ -105,7 +117,6 @@ def sync_single_user_strava_activities_task(
                 activity_count,
             )
 
-            # Update the last sync timestamp
             user.last_strava_sync = datetime.now(timezone.utc)
             logger.info(
                 "Strava sync user_id=%s: updating last_strava_sync to %s.",
@@ -124,18 +135,29 @@ def sync_single_user_strava_activities_task(
                 [activity.id for activity in missing_calorie_activities],
             )
 
+            missing_type_activities = act_service.get_activities_missing_activity_type(
+                user_id,
+                activity_ids=strava_activity_ids,
+            )
+            activity_type_backfill_tasks_dispatched = _dispatch_activity_type_backfill_tasks(
+                user_id,
+                [activity.id for activity in missing_type_activities],
+            )
+
             logger.info(
                 "Strava sync completed for user_id=%s. Added %s new activities. "
-                "Dispatched %s calorie backfill tasks.",
+                "Dispatched %s calorie backfill tasks and %s activity type backfill tasks.",
                 user_id,
                 activity_count,
                 backfill_tasks_dispatched,
+                activity_type_backfill_tasks_dispatched,
             )
             return {
                 "status": "complete",
                 "user_id": user_id,
                 "activities_added": activity_count,
                 "calorie_backfill_tasks": backfill_tasks_dispatched,
+                "activity_type_backfill_tasks": activity_type_backfill_tasks_dispatched,
             }
 
     except Exception as e:
@@ -215,6 +237,79 @@ def fill_missing_strava_activity_calories_task(
 
 
 @inject
+def fill_missing_strava_activity_type_task(
+    user_id: int,
+    activity_ids: list[int],
+    db_session=Provide[Container.db_session],
+    user_repository: type[UserRepository] = Provide[Container.user_repository.provider],
+    activity_repository: type[ActivityRepository] = Provide[Container.activity_repository.provider],
+    activity_service: type[ActivityService] = Provide[Container.activity_service.provider],
+):
+    """Fill missing activity types for up to one batch of Strava activities."""
+    batch_activity_ids = [int(activity_id) for activity_id in activity_ids][
+        :_ACTIVITY_TYPE_BACKFILL_BATCH_SIZE
+    ]
+    logger.info(
+        "Starting Strava activity type backfill for user_id=%s, activity_ids=%s.",
+        user_id,
+        batch_activity_ids,
+    )
+
+    try:
+        with db_session as session:
+            user_repo = user_repository(db=session)
+            activity_repo = activity_repository(db=session)
+            act_service = activity_service(activity_repo=activity_repo)
+
+            user = user_repo.get_by_id(user_id)
+            if not user:
+                logger.warning("User %s not found during Strava activity type backfill.", user_id)
+                return {"status": "error", "message": "User not found"}
+
+            sync_strategy = StravaActivitySyncStrategy()
+            if not sync_strategy.is_connected(user):
+                logger.warning(
+                    "User %s not connected to Strava during activity type backfill.", user_id
+                )
+                return {"status": "error", "message": "User not connected to Strava"}
+
+            token_update = sync_strategy.refresh_token_if_needed(user)
+            if token_update:
+                user_repo.update(user)
+
+            missing_activities = act_service.get_activities_missing_activity_type(
+                user_id,
+                activity_ids=batch_activity_ids,
+            )
+            missing_activity_ids = [activity.id for activity in missing_activities]
+            activity_type_by_activity_id = sync_strategy.fetch_activity_types_batch(
+                user,
+                missing_activity_ids,
+            )
+
+            updated_count = 0
+            for activity_id, activity_type in activity_type_by_activity_id.items():
+                if act_service.update_activity_type(activity_id, user_id, activity_type):
+                    updated_count += 1
+
+            logger.info(
+                "Strava activity type backfill completed for user_id=%s. Updated %s/%s activities.",
+                user_id,
+                updated_count,
+                len(missing_activity_ids),
+            )
+            return {
+                "status": "complete",
+                "user_id": user_id,
+                "activities_updated": updated_count,
+            }
+
+    except Exception as e:
+        logger.exception("Error during Strava activity type backfill for user_id=%s", user_id)
+        return {"status": "error", "message": str(e)}
+
+
+@inject
 def schedule_all_user_syncs_task(
     db_session=Provide[Container.db_session],
     user_repository: type[UserRepository] = Provide[Container.user_repository.provider],
@@ -265,6 +360,23 @@ def _dispatch_calorie_backfill_tasks(user_id: int, activity_ids: list[int]) -> i
         task.apply_async(
             args=(user_id, batch),
             countdown=batch_index * _CALORIE_BACKFILL_BATCH_DELAY_SECONDS,
+        )
+        dispatched_count += 1
+    return dispatched_count
+
+
+def _dispatch_activity_type_backfill_tasks(user_id: int, activity_ids: list[int]) -> int:
+    """Dispatch missing-activity-type backfill tasks in small staggered batches."""
+    if not activity_ids:
+        return 0
+
+    from app.worker import fill_missing_strava_activity_type_task as task
+
+    dispatched_count = 0
+    for batch_index, batch in enumerate(_chunked(activity_ids, _ACTIVITY_TYPE_BACKFILL_BATCH_SIZE)):
+        task.apply_async(
+            args=(user_id, batch),
+            countdown=batch_index * _ACTIVITY_TYPE_BACKFILL_BATCH_DELAY_SECONDS,
         )
         dispatched_count += 1
     return dispatched_count

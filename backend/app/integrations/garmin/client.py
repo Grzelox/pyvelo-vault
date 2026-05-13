@@ -41,7 +41,6 @@ class GarminClientFactory:
 
         api = Garmin(email=email, password=password)
         api.login()
-        # Persist tokens (so subsequent syncs can login without credentials).
         api.garth.dump(tokenstore_dir)
 
         return api, tokenstore_dir

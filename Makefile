@@ -58,6 +58,10 @@ clean:
 	find . -type f -name "*.coverage" -delete
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 
+backfill-activity-types:  ## One-time backfill of activity_type from Strava for all existing activities
+	@echo "Running activity type backfill. Ensure the api container is running."
+	@docker-compose exec -T api python cli.py backfill-activity-types
+
 dev-setup:  ## Complete development setup
 	uv sync
 	uv run pre-commit install

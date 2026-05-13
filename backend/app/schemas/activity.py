@@ -19,6 +19,7 @@ class ActivityBase(BaseModel):
         elapsed_time: Total elapsed time in seconds
         total_elevation_gain: Elevation gain in meters
         calories: Energy burned in kilocalories, when available
+        activity_type: Provider-specific activity category (e.g., Ride, Run)
         start_date: UTC timestamp when the activity started (optional)
     """
 
@@ -28,6 +29,7 @@ class ActivityBase(BaseModel):
     elapsed_time: int
     total_elevation_gain: float
     calories: Optional[float] = None
+    activity_type: Optional[str] = None
     start_date: Optional[datetime] = None
 
 

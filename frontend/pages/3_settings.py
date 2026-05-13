@@ -2,31 +2,23 @@ import os
 
 import requests
 import streamlit as st
-from auth import initialize_auth_state
-from auth import logout as auth_logout
+from auth import init_auth_state, require_auth
 from logging_service import get_frontend_logger
 from theme import inject_theme_variables
 
-# --- Page Configuration ---
 st.set_page_config(
     page_title="Settings - pyvelo-vault",
     page_icon=None,
     layout="wide",
 )
 
-# --- Logging Setup ---
 logger = get_frontend_logger(__name__)
 
-# --- API Configuration ---
 API_URL = os.getenv("API_URL", "http://api:8000")
 
 inject_theme_variables()
-initialize_auth_state(API_URL, logger)
-
-
-def logout():
-    """Clear the session state."""
-    auth_logout(logger, "Settings page")
+init_auth_state()
+require_auth()
 
 
 def disconnect_strava():
@@ -44,18 +36,9 @@ def disconnect_strava():
         return False, f"Failed to disconnect Strava: {str(e)}"
 
 
-# --- Check if logged in ---
-if not st.session_state.access_token:
-    st.warning("Please log in to access settings.")
-    if st.button("Go to Login"):
-        st.switch_page("pages/1_login.py")
-    st.stop()
-
-# --- UI ---
 st.title("Settings")
 st.caption("Manage your account, connected services, and session.")
 
-# User info section
 with st.container(border=True):
     st.subheader("Account Information")
     col1, col2 = st.columns(2)
@@ -66,12 +49,10 @@ with st.container(border=True):
 
     st.caption(f"Member since: {st.session_state.user['created_at'][:10]}")
 
-# Connections section
 with st.container(border=True):
     st.subheader("Connections & Integrations")
     st.write("Manage your connected services and data sources.")
 
-    # Get user's Strava connection status
     try:
         headers = {"Authorization": f"Bearer {st.session_state.access_token}"}
         response = requests.get(f"{API_URL}/api/v1/users/me", headers=headers)
@@ -82,7 +63,6 @@ with st.container(border=True):
         logger.exception("Failed to fetch user profile for settings.")
         has_strava = False
 
-    # Strava Connection Card
     col1, col2 = st.columns([3, 1])
 
     with col1:
@@ -121,7 +101,6 @@ with st.container(border=True):
 
             st.link_button("Connect Strava", connect_url, use_container_width=True, type="primary")
 
-# Coming Soon section
 with st.container(border=True):
     st.subheader("Coming Soon")
     st.write("More integrations will be available soon.")
@@ -130,7 +109,6 @@ with st.container(border=True):
         st.markdown("### Garmin Connect")
         st.caption("Coming Soon")
 
-# Account Actions section
 with st.container(border=True):
     st.subheader("Account Actions")
 
@@ -138,10 +116,4 @@ with st.container(border=True):
 
     with col1:
         if st.button("Back to Home", use_container_width=True):
-            st.switch_page("Home.py")
-
-    with col2:
-        if st.button("Logout", use_container_width=True, type="secondary"):
-            logout()
-            st.success("Logged out successfully!")
             st.switch_page("Home.py")

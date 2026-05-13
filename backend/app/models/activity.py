@@ -20,6 +20,7 @@ class Activity(Base):
         elapsed_time: Total time in seconds (including stops)
         total_elevation_gain: Cumulative elevation climbed in meters
         calories: Energy burned in kilocalories, when provided by the source
+        activity_type: Provider-specific activity category (e.g., Ride, Run)
         start_date: UTC timestamp when the activity started
         owner_id: Foreign key to the user who owns this activity
         owner: Relationship to the User model
@@ -42,6 +43,7 @@ class Activity(Base):
     elapsed_time = Column(Integer)
     total_elevation_gain = Column(Float)
     calories = Column(Float, nullable=True)
+    activity_type = Column(String, nullable=True)
     start_date = Column(DateTime(timezone=True))
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 

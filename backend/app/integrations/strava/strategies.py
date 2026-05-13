@@ -170,6 +170,8 @@ class StravaActivitySyncStrategy(ActivitySyncStrategy):
                 if calories is None:
                     missing_calorie_count += 1
 
+                activity_type = _extract_activity_type(activity)
+
                 standardized_activities.append(
                     {
                         "id": int(activity.id),
@@ -179,6 +181,7 @@ class StravaActivitySyncStrategy(ActivitySyncStrategy):
                         "elapsed_time": elapsed_time,
                         "total_elevation_gain": elevation,
                         "calories": calories,
+                        "activity_type": activity_type,
                         "start_date": start_date,
                     }
                 )
@@ -221,6 +224,54 @@ class StravaActivitySyncStrategy(ActivitySyncStrategy):
                 calories_by_activity_id[int(activity_id)] = calories
         return calories_by_activity_id
 
+    def fetch_activity_types_batch(self, user: User, activity_ids: list[int]) -> dict[int, str]:
+        """Fetch activity types from the listing endpoint for missing activities.
+
+        This is far more efficient than calling ``get_activity()`` per activity
+        because the list endpoint bundles up to 200 per page and already
+        returns ``sport_type`` / ``type`` on every ``SummaryActivity``.
+        """
+        token_expires = None
+        if user.strava_token_expires_at:
+            expires_at = user.strava_token_expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            token_expires = int(expires_at.timestamp())
+
+        client = StravaClientFactory.create_authenticated_client(
+            user.strava_access_token,
+            refresh_token=user.strava_refresh_token,
+            token_expires=token_expires,
+        )
+
+        wanted = set(int(aid) for aid in activity_ids)
+        found: dict[int, str] = {}
+
+        # fetch all pages via the stravalib iterator
+        all_activities = _call_with_rate_limit_backoff(
+            self._logger,
+            lambda: list(client.get_activities()),
+            "fetch all Strava activities for type backfill",
+        )
+
+        for act in all_activities:
+            aid = int(act.id)
+            if aid in wanted:
+                atype = _extract_activity_type(act)
+                if atype:
+                    found[aid] = atype
+                    wanted.discard(aid)
+                    if not wanted:
+                        break
+
+        if wanted:
+            self._logger.warning(
+                "Could not fetch types for %s activities (not returned by list endpoint).",
+                len(wanted),
+            )
+
+        return found
+
     def _fetch_activity_calories(self, client, activity_id: int) -> float | None:
         """Fetch detailed Strava activity calories when summary data lacks them."""
         get_activity = getattr(client, "get_activity", None)
@@ -238,6 +289,24 @@ class StravaActivitySyncStrategy(ActivitySyncStrategy):
             return None
 
         return _extract_float(getattr(detailed_activity, "calories", None))
+
+    def _fetch_activity_type(self, client, activity_id: int) -> str | None:
+        """Fetch detailed Strava activity type when summary data lacks it."""
+        get_activity = getattr(client, "get_activity", None)
+        if not callable(get_activity):
+            return None
+
+        try:
+            detailed_activity = _call_with_rate_limit_backoff(
+                self._logger,
+                lambda: get_activity(activity_id),
+                f"fetch Strava activity detail {activity_id}",
+            )
+        except Exception:
+            self._logger.exception("Failed to fetch Strava activity detail %s", activity_id)
+            return None
+
+        return _extract_activity_type(detailed_activity)
 
 
 def _extract_float(value) -> float | None:
@@ -258,6 +327,55 @@ def _extract_float(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _extract_activity_type(activity) -> str | None:
+    """Normalize Strava activity type preferring sport_type over legacy type."""
+    sport_type = getattr(activity, "sport_type", None)
+    resolved_sport_type = _normalize_activity_type_value(sport_type)
+    if resolved_sport_type:
+        return resolved_sport_type
+
+    legacy_type = getattr(activity, "type", None)
+    resolved_legacy_type = _normalize_activity_type_value(legacy_type)
+    if resolved_legacy_type:
+        return resolved_legacy_type
+
+    return None
+
+
+def _normalize_activity_type_value(value) -> str | None:
+    """Normalize Strava activity type across enum/string/pydantic wrappers."""
+    if value is None:
+        return None
+
+    if isinstance(value, str) and value:
+        return value
+
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, str) and enum_value:
+        return enum_value
+
+    root_value = getattr(value, "root", None)
+    if isinstance(root_value, str) and root_value:
+        return root_value
+
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        try:
+            dumped = model_dump()
+        except Exception:
+            return None
+
+        if isinstance(dumped, str) and dumped:
+            return dumped
+
+        if isinstance(dumped, dict):
+            dumped_root = dumped.get("root")
+            if isinstance(dumped_root, str) and dumped_root:
+                return dumped_root
+
+    return None
 
 
 def _call_with_rate_limit_backoff(logger, operation, description: str):

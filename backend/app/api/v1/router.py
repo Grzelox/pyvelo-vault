@@ -9,7 +9,6 @@ from .endpoints import activities, auth, garmin, health, strava, users
 
 api_router = APIRouter()
 
-# Include all endpoint routers
 api_router.include_router(auth.router, tags=["Authentication"])
 api_router.include_router(users.router, prefix="/users", tags=["Users"])
 api_router.include_router(activities.router, prefix="/activities", tags=["Activities"])

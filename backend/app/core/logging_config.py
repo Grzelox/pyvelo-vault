@@ -102,7 +102,6 @@ def _configure_logging() -> None:
         }
     )
 
-    # stravalib can log OAuth request params at INFO, including token material.
     logging.getLogger("stravalib").setLevel(logging.WARNING)
 
     _LOGGING_CONFIGURED = True

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-# Pastel accent palette used only for custom HTML components.
 _ACCENT_COLORS = {
     "sage": "#8ABFA3",
     "mint": "#CDE8DD",
@@ -66,6 +65,46 @@ def inject_theme_variables() -> None:
             line-height: 1.7;
             margin: 1rem 0 0;
             max-width: 44rem;
+        }}
+
+        .pv-auth-hero {{
+            padding: 1.3rem 1.2rem;
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            margin-bottom: 1rem;
+            background:
+                radial-gradient(circle at top right, color-mix(in srgb, var(--pv-accent-mint) 45%, transparent), transparent 46%),
+                linear-gradient(160deg, var(--secondary-background-color), var(--background-color));
+        }}
+
+        .pv-auth-kicker {{
+            margin: 0;
+            color: color-mix(in srgb, var(--text-color) 68%, var(--background-color));
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+        }}
+
+        .pv-auth-title {{
+            margin: 0.35rem 0 0;
+            font-size: clamp(1.7rem, 4vw, 2.25rem);
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+            color: var(--text-color);
+        }}
+
+        .pv-auth-subtitle {{
+            margin: 0.7rem 0 0;
+            color: color-mix(in srgb, var(--text-color) 78%, var(--background-color));
+            font-size: 0.98rem;
+            line-height: 1.45;
+        }}
+
+        .pv-auth-tips {{
+            border-left: 3px solid var(--primary-color);
+            padding: 0.2rem 0.9rem;
+            margin: 0.2rem 0;
         }}
 
         </style>

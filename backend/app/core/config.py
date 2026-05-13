@@ -22,14 +22,12 @@ class Settings(BaseSettings):
         FRONTEND_URL: Frontend application URL for redirects
     """
 
-    # All values must be provided via environment variables or .env file
     DATABASE_URL: str
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
     STRAVA_CLIENT_ID: str
     STRAVA_CLIENT_SECRET: str
     STRAVA_REDIRECT_URI: str
-    # Garmin Connect (via python-garminconnect). Tokenstore dir (per-user subdirs).
     GARMIN_TOKENS_DIR: str = "logs/garminconnect"
     FRONTEND_URL: str
     LOG_DIR: str = "logs"

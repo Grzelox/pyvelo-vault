@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .security import decode_token
 
-# OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 
 

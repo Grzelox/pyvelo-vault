@@ -1,5 +1,7 @@
 """Tests for repository pattern implementation."""
 
+from datetime import datetime, timezone
+
 import pytest
 from app.models import Activity, User
 from app.repositories import ActivityRepository, UserRepository
@@ -164,6 +166,33 @@ class TestActivityRepository:
 
         assert [activity.id for activity in activities] == [test_activities[1].id]
 
+    def test_get_missing_activity_type_by_user(self, test_db, test_user, test_activities):
+        """Test getting activities that need activity type backfill."""
+        test_activities[0].activity_type = None
+        test_activities[1].activity_type = "Ride"
+        test_db.commit()
+
+        repo = ActivityRepository(test_db)
+        activities = repo.get_missing_activity_type_by_user(test_user.id)
+
+        assert [activity.id for activity in activities] == [test_activities[0].id]
+
+    def test_get_missing_activity_type_by_user_filters_ids(
+        self, test_db, test_user, test_activities
+    ):
+        """Test missing activity type lookup can be limited to selected activities."""
+        test_activities[0].activity_type = None
+        test_activities[1].activity_type = None
+        test_db.commit()
+
+        repo = ActivityRepository(test_db)
+        activities = repo.get_missing_activity_type_by_user(
+            test_user.id,
+            activity_ids=[test_activities[1].id],
+        )
+
+        assert [activity.id for activity in activities] == [test_activities[1].id]
+
     def test_exists_true(self, test_db, test_user, test_activities):
         """Test exists returns True when activity exists for user."""
         repo = ActivityRepository(test_db)
@@ -244,3 +273,47 @@ class TestActivityRepository:
         updated = repo.update_calories(test_activities[0].id, 99999, 555.0)
 
         assert updated is False
+
+    def test_update_activity_type(self, test_db, test_user, test_activities):
+        """Test updating activity type for a user-owned activity."""
+        repo = ActivityRepository(test_db)
+
+        updated = repo.update_activity_type(test_activities[0].id, test_user.id, "Ride")
+
+        assert updated is True
+        test_db.refresh(test_activities[0])
+        assert test_activities[0].activity_type == "Ride"
+
+    def test_update_activity_type_wrong_user(self, test_db, test_activities):
+        """Test activity type updates are scoped to the owning user."""
+        repo = ActivityRepository(test_db)
+
+        updated = repo.update_activity_type(test_activities[0].id, 99999, "Ride")
+
+        assert updated is False
+
+    def test_get_latest_activity_start_date(self, test_db, test_user, test_activities):
+        """Test latest activity start_date lookup for a user."""
+        test_activities[0].start_date = datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc)
+        test_activities[1].start_date = datetime(2025, 1, 2, 18, 30, tzinfo=timezone.utc)
+        test_db.commit()
+
+        repo = ActivityRepository(test_db)
+        latest_start_date = repo.get_latest_activity_start_date(test_user.id)
+
+        assert latest_start_date == datetime(2025, 1, 2, 18, 30, tzinfo=timezone.utc)
+
+    def test_get_latest_activity_start_date_returns_none_when_missing(
+        self,
+        test_db,
+        test_user,
+        test_activities,
+    ):
+        """Test latest activity start_date returns None when all are null."""
+        test_activities[0].start_date = None
+        test_activities[1].start_date = None
+        test_db.commit()
+
+        repo = ActivityRepository(test_db)
+
+        assert repo.get_latest_activity_start_date(test_user.id) is None

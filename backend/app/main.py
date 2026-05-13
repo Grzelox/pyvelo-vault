@@ -13,13 +13,34 @@ from app.core import engine, get_logger, get_password_hash
 from app.core.database import SessionLocal
 from app.models import Activity, Base, User
 from fastapi import FastAPI
+from sqlalchemy import inspect, text
 
 # Configure module logger
 logger = get_logger(__name__)
 
+
+def _ensure_activity_type_column() -> None:
+    """Backfill schema for installs created before activity_type existed."""
+    if engine is None:
+        return
+
+    inspector = inspect(engine)
+    if not inspector.has_table("activities"):
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("activities")}
+    if "activity_type" in columns:
+        return
+
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE activities ADD COLUMN activity_type VARCHAR"))
+    logger.info("Added missing activities.activity_type column.")
+
+
 # Create all tables defined in models in the database (skip in test mode)
 if os.getenv("TESTING") != "true" and engine is not None:
     Base.metadata.create_all(bind=engine)
+    _ensure_activity_type_column()
 
 
 @asynccontextmanager
@@ -43,7 +64,6 @@ async def lifespan(app: FastAPI):
 
     db = SessionLocal()
 
-    # Create default user if none exists
     if db.query(User).count() == 0:
         logger.info("Creating default user...")
         default_user = User(
@@ -55,7 +75,6 @@ async def lifespan(app: FastAPI):
         db.commit()
         db.refresh(default_user)
 
-        # Seed activities for the default user
         logger.info("Seeding activities for default user...")
         mock_activities = [
             Activity(
@@ -84,7 +103,6 @@ async def lifespan(app: FastAPI):
     yield
 
 
-# Create FastAPI application
 app = FastAPI(
     title="pyvelo-vault API",
     description="A self-hosted cycling activity tracking and analytics platform",
@@ -92,10 +110,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Dependency Injector container (used for wiring dependencies in endpoints)
 container = Container()
 container.wire()
 app.container = container  # type: ignore[attr-defined]
 
-# Include API v1 router
 app.include_router(api_router, prefix="/api/v1")

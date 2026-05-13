@@ -18,7 +18,7 @@ celery.conf.update(
     task_track_started=True,
 )
 
-# Configure Celery Beat schedule
+
 celery.conf.beat_schedule = {
     "sync-all-users-every-hour": {
         "task": "app.worker.schedule_all_user_syncs_task",
@@ -26,8 +26,7 @@ celery.conf.beat_schedule = {
     },
 }
 
-# Wire the DI container for Celery tasks
-# This enables @inject decorators in task modules
+
 container.wire(
     modules=[
         "app.integrations.strava.tasks",
@@ -36,7 +35,6 @@ container.wire(
 )
 
 
-# Register tasks
 @celery.task
 def sync_single_user_strava_activities_task(user_id: int):
     """Celery task wrapper for Strava activity sync (delta sync).
@@ -58,6 +56,14 @@ def fill_missing_strava_activity_calories_task(user_id: int, activity_ids: list[
     from app.integrations.strava.tasks import (
         fill_missing_strava_activity_calories_task as fill_func,
     )
+
+    return fill_func(user_id, activity_ids)
+
+
+@celery.task
+def fill_missing_strava_activity_type_task(user_id: int, activity_ids: list[int]):
+    """Celery task wrapper for Strava activity type backfill."""
+    from app.integrations.strava.tasks import fill_missing_strava_activity_type_task as fill_func
 
     return fill_func(user_id, activity_ids)
 

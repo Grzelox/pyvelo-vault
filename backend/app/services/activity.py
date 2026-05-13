@@ -59,6 +59,12 @@ class ActivityService:
             if not self.activity_repo.exists(activity_data["id"], user_id):
                 new_activity = Activity(**activity_data, owner_id=user_id)
                 new_activities.append(new_activity)
+            elif activity_data.get("activity_type"):
+                self.activity_repo.update_activity_type(
+                    activity_data["id"],
+                    user_id,
+                    activity_data["activity_type"],
+                )
 
         if new_activities:
             return self.activity_repo.create_many(new_activities)
@@ -73,3 +79,16 @@ class ActivityService:
     def update_activity_calories(self, activity_id: int, user_id: int, calories: float) -> bool:
         """Update calories for one user-owned activity."""
         return self.activity_repo.update_calories(activity_id, user_id, calories)
+
+    def get_activities_missing_activity_type(
+        self, user_id: int, activity_ids: list[int] | None = None
+    ) -> List[Activity]:
+        """Get user activities that need activity type backfill."""
+        return self.activity_repo.get_missing_activity_type_by_user(
+            user_id,
+            activity_ids=activity_ids,
+        )
+
+    def update_activity_type(self, activity_id: int, user_id: int, activity_type: str) -> bool:
+        """Update activity type for one user-owned activity."""
+        return self.activity_repo.update_activity_type(activity_id, user_id, activity_type)
