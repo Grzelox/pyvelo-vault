@@ -2,18 +2,96 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any
 
+import extra_streamlit_components as stx
 import requests
 import streamlit as st
 
 API_URL = os.getenv("API_URL", "http://api:8000")
+AUTH_COOKIE_NAME = "pyvelo_vault_auth"
 
 
 class AuthError(Exception):
     """Raised when an authentication action fails."""
+
+
+def _get_cookie_manager() -> stx.CookieManager:
+    """Return a shared cookie manager for the current Streamlit session."""
+    cookie_manager = st.session_state.get("_auth_cookie_manager")
+    if cookie_manager is None:
+        cookie_manager = stx.CookieManager(key="pyvelo-vault-auth-cookie-manager")
+        st.session_state._auth_cookie_manager = cookie_manager
+    return cookie_manager
+
+
+def _clear_auth_cookie() -> None:
+    """Remove the persisted auth cookie when present."""
+    cookie_manager = _get_cookie_manager()
+    if cookie_manager.get(AUTH_COOKIE_NAME) is not None:
+        cookie_manager.delete(AUTH_COOKIE_NAME, key="pyvelo-vault-auth-cookie-delete")
+
+
+def _persist_auth_cookie() -> None:
+    """Mirror the in-memory auth state into a browser cookie."""
+    access_token = st.session_state.get("access_token")
+    if not access_token:
+        _clear_auth_cookie()
+        return
+
+    expires_at = st.session_state.get("expires_at")
+    cookie_expiry = None
+    if expires_at is not None:
+        cookie_expiry = datetime.fromtimestamp(int(expires_at), tz=timezone.utc)
+
+    payload = json.dumps(
+        {
+            "access_token": access_token,
+            "token_type": st.session_state.get("token_type"),
+            "expires_in": st.session_state.get("expires_in"),
+            "expires_at": expires_at,
+            "user": st.session_state.get("user"),
+        },
+        separators=(",", ":"),
+    )
+    _get_cookie_manager().set(
+        AUTH_COOKIE_NAME,
+        payload,
+        key="pyvelo-vault-auth-cookie-set",
+        expires_at=cookie_expiry,
+        same_site="strict",
+    )
+
+
+def _restore_auth_from_cookie() -> None:
+    """Rehydrate auth state after a full page reload."""
+    if st.session_state.get("access_token"):
+        return
+
+    raw_payload = _get_cookie_manager().get(AUTH_COOKIE_NAME)
+    if not raw_payload:
+        return
+
+    try:
+        payload = json.loads(raw_payload)
+    except (TypeError, json.JSONDecodeError):
+        _clear_auth_cookie()
+        return
+
+    expires_at = payload.get("expires_at")
+    if expires_at is not None and int(time.time()) >= int(expires_at):
+        _clear_auth_cookie()
+        return
+
+    st.session_state.access_token = payload.get("access_token")
+    st.session_state.token_type = payload.get("token_type")
+    st.session_state.expires_in = payload.get("expires_in")
+    st.session_state.expires_at = expires_at
+    st.session_state.user = payload.get("user")
 
 
 def init_auth_state() -> None:
@@ -29,6 +107,8 @@ def init_auth_state() -> None:
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+    _restore_auth_from_cookie()
 
 
 def _parse_error_message(response: requests.Response, fallback: str) -> str:
@@ -49,6 +129,7 @@ def save_token_data(token_data: dict[str, Any]) -> None:
     st.session_state.token_type = token_data.get("token_type", "bearer")
     st.session_state.expires_in = expires_in
     st.session_state.expires_at = int(time.time()) + expires_in if expires_in > 0 else None
+    _persist_auth_cookie()
 
 
 def register(email: str, username: str, password: str) -> dict[str, Any]:
@@ -112,7 +193,10 @@ def fetch_current_user(token: str | None = None) -> dict[str, Any]:
         raise AuthError(f"Could not reach API: {exc}") from exc
 
     if response.status_code == 200:
-        return response.json()
+        user = response.json()
+        st.session_state.user = user
+        _persist_auth_cookie()
+        return user
 
     if response.status_code == 401:
         raise AuthError("Your session expired. Please sign in again.")
@@ -128,6 +212,7 @@ def logout() -> None:
     st.session_state.expires_in = None
     st.session_state.expires_at = None
     st.session_state.user = None
+    _clear_auth_cookie()
 
 
 def is_authenticated() -> bool:
@@ -148,6 +233,14 @@ def is_authenticated() -> bool:
 
 def redirect_if_authenticated() -> None:
     """Redirect authenticated visitors away from auth pages."""
+    if st.session_state.get("access_token") and st.session_state.get("user") is None:
+        expires_at = st.session_state.get("expires_at")
+        if expires_at is None or int(time.time()) < int(expires_at):
+            try:
+                fetch_current_user()
+            except AuthError:
+                logout()
+
     if is_authenticated():
         st.switch_page("Home.py")
         st.stop()

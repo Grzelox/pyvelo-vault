@@ -5,7 +5,7 @@ from theme import inject_theme_variables
 st.set_page_config(
     page_title="Sign Up - pyvelo-vault",
     page_icon=None,
-    layout="centered",
+    layout="wide",
 )
 
 inject_theme_variables()

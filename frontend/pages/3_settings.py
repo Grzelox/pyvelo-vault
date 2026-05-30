@@ -15,6 +15,7 @@ st.set_page_config(
 logger = get_frontend_logger(__name__)
 
 API_URL = os.getenv("API_URL", "http://api:8000")
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "http://localhost:8000")
 
 inject_theme_variables()
 init_auth_state()
@@ -26,7 +27,11 @@ def disconnect_strava():
     try:
         user_id = st.session_state.user.get("id") if st.session_state.user else "unknown"
         headers = {"Authorization": f"Bearer {st.session_state.access_token}"}
-        response = requests.post(f"{API_URL}/api/v1/strava/disconnect", headers=headers)
+        response = requests.post(
+            f"{API_URL}/api/v1/strava/disconnect",
+            headers=headers,
+            timeout=20,
+        )
         response.raise_for_status()
         logger.info("Strava account disconnected for user %s.", user_id)
         return True, "Strava account disconnected successfully!"
@@ -55,10 +60,10 @@ with st.container(border=True):
 
     try:
         headers = {"Authorization": f"Bearer {st.session_state.access_token}"}
-        response = requests.get(f"{API_URL}/api/v1/users/me", headers=headers)
+        response = requests.get(f"{API_URL}/api/v1/users/me", headers=headers, timeout=20)
         response.raise_for_status()
         user_data = response.json()
-        has_strava = user_data.get("strava_athlete_id") is not None
+        has_strava = bool(user_data.get("strava_connected"))
     except Exception:
         logger.exception("Failed to fetch user profile for settings.")
         has_strava = False
@@ -94,9 +99,9 @@ with st.container(border=True):
         else:
             user_id = st.session_state.user.get("id")
             connect_url = (
-                f"http://localhost:8000/api/v1/strava/connect?user_id={user_id}"
+                f"{PUBLIC_API_URL}/api/v1/strava/connect?user_id={user_id}"
                 if user_id
-                else "http://localhost:8000/api/v1/strava/connect"
+                else f"{PUBLIC_API_URL}/api/v1/strava/connect"
             )
 
             st.link_button("Connect Strava", connect_url, use_container_width=True, type="primary")

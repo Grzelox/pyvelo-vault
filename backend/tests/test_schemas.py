@@ -39,6 +39,9 @@ class TestUserSchemas:
         assert user_schema.email == test_user.email
         assert user_schema.username == test_user.username
         assert isinstance(user_schema.created_at, datetime)
+        assert user_schema.strava_connected is False
+        assert user_schema.garmin_connected is False
+        assert user_schema.last_sync_status is None
 
     def test_user_schema_excludes_password(self, test_user):
         """Test that User response schema doesn't include password."""
@@ -55,9 +58,14 @@ class TestTokenSchemas:
 
     def test_token_valid(self):
         """Test Token schema with valid data."""
-        token = schemas.Token(access_token="eyJ0eXAiOiJKV1QiLCJhbGc...", token_type="bearer")
+        token = schemas.Token(
+            access_token="eyJ0eXAiOiJKV1QiLCJhbGc...",
+            token_type="bearer",
+            expires_in=3600,
+        )
         assert token.access_token == "eyJ0eXAiOiJKV1QiLCJhbGc..."
         assert token.token_type == "bearer"
+        assert token.expires_in == 3600
 
     def test_token_data_valid(self):
         """Test TokenData schema with valid data."""

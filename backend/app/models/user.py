@@ -37,6 +37,9 @@ class User(Base):
     strava_token_expires_at = Column(DateTime, nullable=True)
     strava_athlete_id = Column(Integer, nullable=True)
     last_strava_sync = Column(DateTime, nullable=True)
+    last_sync_source = Column(String, nullable=True)
+    last_sync_status = Column(String, nullable=True)
+    last_sync_at = Column(DateTime, nullable=True)
 
     # Garmin Connect OAuth tokens (optional integration)
     garmin_access_token = Column(String, nullable=True)
@@ -47,3 +50,13 @@ class User(Base):
 
     # Relationship to activities
     activities = relationship("Activity", back_populates="owner")
+
+    @property
+    def strava_connected(self) -> bool:
+        """Return True when the user has an active Strava connection."""
+        return bool(self.strava_access_token)
+
+    @property
+    def garmin_connected(self) -> bool:
+        """Return True when the user has an active Garmin connection."""
+        return bool(self.garmin_access_token)

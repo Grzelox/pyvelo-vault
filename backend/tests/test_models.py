@@ -74,6 +74,21 @@ class TestUserModel:
         assert user.strava_refresh_token == "refresh_token"
         # SQLite doesn't store timezone info, so compare without timezone
         assert user.strava_token_expires_at.replace(tzinfo=timezone.utc) == expires_at
+        assert user.strava_connected is True
+
+    def test_user_strava_connected_without_athlete_id(self, test_db):
+        """Test legacy Strava connections still report as connected."""
+        user = User(
+            email="legacy@example.com",
+            username="Legacy User",
+            hashed_password="password",
+            strava_access_token="access_token",
+        )
+        test_db.add(user)
+        test_db.commit()
+        test_db.refresh(user)
+
+        assert user.strava_connected is True
 
     def test_user_activities_relationship(self, test_db, test_user, test_activities):
         """Test the relationship between User and Activities."""

@@ -1,12 +1,13 @@
 """Activity endpoints."""
 
+from datetime import datetime, timezone
 from typing import List
 
 from app.core import get_current_user, get_db
 from app.models import User
-from app.repositories import ActivityRepository
+from app.repositories import ActivityRepository, UserRepository
 from app.schemas import Activity, ActivityCreate
-from app.services import ActivityService
+from app.services import ActivityService, UserService
 from app.worker import (
     sync_single_user_garmin_activities_task,
     sync_single_user_strava_activities_task,
@@ -64,7 +65,10 @@ def create_activity(
 
 
 @router.post("/sync", status_code=202)
-def start_sync(current_user: User = Depends(get_current_user)):
+def start_sync(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Trigger a background task to sync Strava activities for the current user.
 
     This endpoint schedules a background job that fetches activities from
@@ -77,12 +81,29 @@ def start_sync(current_user: User = Depends(get_current_user)):
     Returns:
         dict: A message indicating the sync has been started
     """
+    user_service = UserService(UserRepository(db))
+    user_service.record_sync_status(
+        current_user,
+        source="Strava",
+        status="queued",
+        recorded_at=datetime.now(timezone.utc),
+    )
     sync_single_user_strava_activities_task.delay(user_id=current_user.id)
     return {"message": "Strava activity sync has been started."}
 
 
 @router.post("/sync/garmin", status_code=202)
-def start_garmin_sync(current_user: User = Depends(get_current_user)):
+def start_garmin_sync(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Trigger a background task to sync Garmin activities for the current user."""
+    user_service = UserService(UserRepository(db))
+    user_service.record_sync_status(
+        current_user,
+        source="Garmin",
+        status="queued",
+        recorded_at=datetime.now(timezone.utc),
+    )
     sync_single_user_garmin_activities_task.delay(user_id=current_user.id)
     return {"message": "Garmin activity sync has been started."}

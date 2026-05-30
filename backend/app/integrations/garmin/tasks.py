@@ -12,7 +12,7 @@ from app.core import get_logger
 from app.integrations.activity_sync import ActivitySyncContext
 from app.models import User
 from app.repositories import ActivityRepository, UserRepository
-from app.services import ActivityService
+from app.services import ActivityService, UserService
 from dependency_injector.wiring import Provide, inject
 
 from .strategies import GarminActivitySyncStrategy
@@ -39,6 +39,7 @@ def sync_single_user_garmin_activities_task(
             user_repo = user_repository(db=session)
             activity_repo = activity_repository(db=session)
             act_service = activity_service(activity_repo=activity_repo)
+            user_service = UserService(user_repo)
 
             user = user_repo.get_by_id(user_id)
             if not user:
@@ -68,22 +69,26 @@ def sync_single_user_garmin_activities_task(
             )
             if not is_connected:
                 logger.warning("User %s not connected to Garmin.", user_id)
+                user_service.record_sync_status(user, source="Garmin", status="failed")
                 return {"status": "error", "message": "User not connected to Garmin"}
 
-            if token_update:
-                user.garmin_access_token = (
-                    token_update.get("access_token") or user.garmin_access_token
-                )
-                user.garmin_refresh_token = (
-                    token_update.get("refresh_token") or user.garmin_refresh_token
-                )
-                if token_update.get("expires_at"):
-                    user.garmin_token_expires_at = token_update["expires_at"]
+            try:
+                if token_update:
+                    user.garmin_access_token = (
+                        token_update.get("access_token") or user.garmin_access_token
+                    )
+                    user.garmin_refresh_token = (
+                        token_update.get("refresh_token") or user.garmin_refresh_token
+                    )
+                    if token_update.get("expires_at"):
+                        user.garmin_token_expires_at = token_update["expires_at"]
 
-            activity_count = act_service.import_activities(activities_data, user_id)
+                activity_count = act_service.import_activities(activities_data, user_id)
 
-            user.last_garmin_sync = datetime.now(timezone.utc)
-            user_repo.update(user)
+                user_service.record_sync_status(user, source="Garmin", status="success")
+            except Exception:
+                user_service.record_sync_status(user, source="Garmin", status="failed")
+                raise
 
             logger.info(
                 "Garmin sync completed for user_id=%s. Added %s new activities.",

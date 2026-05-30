@@ -1,6 +1,6 @@
 """User service for business logic."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.core.security import create_access_token, get_password_hash, verify_password
@@ -116,7 +116,6 @@ class UserService:
         user.strava_refresh_token = None
         user.strava_token_expires_at = None
         user.strava_athlete_id = None
-        user.last_strava_sync = None
         return self.user_repo.update(user)
 
     def update_garmin_tokens(
@@ -141,5 +140,26 @@ class UserService:
         user.garmin_refresh_token = None
         user.garmin_token_expires_at = None
         user.garmin_user_id = None
-        user.last_garmin_sync = None
+        return self.user_repo.update(user)
+
+    def record_sync_status(
+        self,
+        user: User,
+        source: str,
+        status: str,
+        recorded_at: datetime | None = None,
+    ) -> User:
+        """Persist the latest sync attempt status for a user."""
+        event_time = recorded_at or datetime.now(timezone.utc)
+
+        user.last_sync_source = source
+        user.last_sync_status = status
+        user.last_sync_at = event_time
+
+        if status == "success":
+            if source == "Strava":
+                user.last_strava_sync = event_time
+            elif source == "Garmin":
+                user.last_garmin_sync = event_time
+
         return self.user_repo.update(user)

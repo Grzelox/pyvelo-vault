@@ -12,7 +12,7 @@ from app.container import Container
 from app.core import get_logger
 from app.models import User
 from app.repositories import ActivityRepository, UserRepository
-from app.services import ActivityService
+from app.services import ActivityService, UserService
 from dependency_injector.wiring import Provide, inject
 
 from .strategies import StravaActivitySyncStrategy
@@ -59,6 +59,7 @@ def sync_single_user_strava_activities_task(
             user_repo = user_repository(db=session)
             activity_repo = activity_repository(db=session)
             act_service = activity_service(activity_repo=activity_repo)
+            user_service = UserService(user_repo)
 
             # Get user
             logger.info("Strava sync user_id=%s: loading user.", user_id)
@@ -87,62 +88,72 @@ def sync_single_user_strava_activities_task(
             logger.info("Strava sync user_id=%s: checking Strava connection.", user_id)
             if not sync_strategy.is_connected(user):
                 logger.warning("User %s not connected to Strava.", user_id)
+                user_service.record_sync_status(user, source="Strava", status="failed")
                 return {"status": "error", "message": "User not connected to Strava"}
 
-            logger.info("Strava sync user_id=%s: checking access token freshness.", user_id)
-            token_update = sync_strategy.refresh_token_if_needed(user)
-            if token_update:
-                logger.info("Strava sync user_id=%s: persisting refreshed token.", user_id)
-                user_repo.update(user)
-            else:
-                logger.info("Strava sync user_id=%s: access token still valid.", user_id)
+            try:
+                logger.info("Strava sync user_id=%s: checking access token freshness.", user_id)
+                token_update = sync_strategy.refresh_token_if_needed(user)
+                if token_update:
+                    logger.info("Strava sync user_id=%s: persisting refreshed token.", user_id)
+                    user_repo.update(user)
+                else:
+                    logger.info("Strava sync user_id=%s: access token still valid.", user_id)
 
-            logger.info("Strava sync user_id=%s: fetching activities from Strava.", user_id)
-            activities_data = sync_strategy.fetch_activities(user, after=sync_after_date)
-            logger.info(
-                "Strava sync user_id=%s: fetched %s normalized activities.",
-                user_id,
-                len(activities_data),
-            )
+                logger.info("Strava sync user_id=%s: fetching activities from Strava.", user_id)
+                activities_data = sync_strategy.fetch_activities(user, after=sync_after_date)
+                logger.info(
+                    "Strava sync user_id=%s: fetched %s normalized activities.",
+                    user_id,
+                    len(activities_data),
+                )
 
-            logger.info(
-                "Strava sync user_id=%s: importing %s activities into database.",
-                user_id,
-                len(activities_data),
-            )
-            activity_count = act_service.import_activities(activities_data, user_id)
-            logger.info(
-                "Strava sync user_id=%s: imported %s new activities.",
-                user_id,
-                activity_count,
-            )
+                logger.info(
+                    "Strava sync user_id=%s: importing %s activities into database.",
+                    user_id,
+                    len(activities_data),
+                )
+                activity_count = act_service.import_activities(activities_data, user_id)
+                logger.info(
+                    "Strava sync user_id=%s: imported %s new activities.",
+                    user_id,
+                    activity_count,
+                )
 
-            user.last_strava_sync = datetime.now(timezone.utc)
-            logger.info(
-                "Strava sync user_id=%s: updating last_strava_sync to %s.",
-                user_id,
-                user.last_strava_sync,
-            )
-            user_repo.update(user)
+                recorded_at = datetime.now(timezone.utc)
+                user_service.record_sync_status(
+                    user,
+                    source="Strava",
+                    status="success",
+                    recorded_at=recorded_at,
+                )
+                logger.info(
+                    "Strava sync user_id=%s: updating last_strava_sync to %s.",
+                    user_id,
+                    recorded_at,
+                )
 
-            strava_activity_ids = [int(activity["id"]) for activity in activities_data]
-            missing_calorie_activities = act_service.get_activities_missing_calories(
-                user_id,
-                activity_ids=strava_activity_ids,
-            )
-            backfill_tasks_dispatched = _dispatch_calorie_backfill_tasks(
-                user_id,
-                [activity.id for activity in missing_calorie_activities],
-            )
+                strava_activity_ids = [int(activity["id"]) for activity in activities_data]
+                missing_calorie_activities = act_service.get_activities_missing_calories(
+                    user_id,
+                    activity_ids=strava_activity_ids,
+                )
+                backfill_tasks_dispatched = _dispatch_calorie_backfill_tasks(
+                    user_id,
+                    [activity.id for activity in missing_calorie_activities],
+                )
 
-            missing_type_activities = act_service.get_activities_missing_activity_type(
-                user_id,
-                activity_ids=strava_activity_ids,
-            )
-            activity_type_backfill_tasks_dispatched = _dispatch_activity_type_backfill_tasks(
-                user_id,
-                [activity.id for activity in missing_type_activities],
-            )
+                missing_type_activities = act_service.get_activities_missing_activity_type(
+                    user_id,
+                    activity_ids=strava_activity_ids,
+                )
+                activity_type_backfill_tasks_dispatched = _dispatch_activity_type_backfill_tasks(
+                    user_id,
+                    [activity.id for activity in missing_type_activities],
+                )
+            except Exception:
+                user_service.record_sync_status(user, source="Strava", status="failed")
+                raise
 
             logger.info(
                 "Strava sync completed for user_id=%s. Added %s new activities. "
@@ -269,7 +280,8 @@ def fill_missing_strava_activity_type_task(
             sync_strategy = StravaActivitySyncStrategy()
             if not sync_strategy.is_connected(user):
                 logger.warning(
-                    "User %s not connected to Strava during activity type backfill.", user_id
+                    "User %s not connected to Strava during activity type backfill.",
+                    user_id,
                 )
                 return {"status": "error", "message": "User not connected to Strava"}
 

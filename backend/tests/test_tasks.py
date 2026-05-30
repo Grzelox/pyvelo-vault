@@ -47,6 +47,7 @@ class TestSyncSingleUserStravaActivitiesTask:
                 "elapsed_time": 3700,
                 "total_elevation_gain": 250.0,
                 "calories": 450.0,
+                "activity_type": "Ride",
             }
         ]
         mock_strategy_class.return_value = mock_strategy
@@ -63,6 +64,11 @@ class TestSyncSingleUserStravaActivitiesTask:
         assert result["status"] == "complete"
         assert result["user_id"] == user_id
         assert result["activities_added"] == 1
+
+        updated_user = test_db.query(User).filter_by(id=user_id).first()
+        assert updated_user.last_sync_source == "Strava"
+        assert updated_user.last_sync_status == "success"
+        assert updated_user.last_strava_sync is not None
 
     def test_user_not_found(self, test_db):
         # Pass dependencies explicitly to bypass DI container
@@ -91,6 +97,10 @@ class TestSyncSingleUserStravaActivitiesTask:
         )
         assert result["status"] == "error"
         assert "not connected" in result["message"].lower()
+
+        updated_user = test_db.query(User).filter_by(id=test_user.id).first()
+        assert updated_user.last_sync_source == "Strava"
+        assert updated_user.last_sync_status == "failed"
 
     @patch("app.integrations.strava.tasks.StravaActivitySyncStrategy")
     def test_token_refresh_updates_user(
@@ -153,6 +163,7 @@ class TestSyncSingleUserStravaActivitiesTask:
                 "elapsed_time": 1,
                 "total_elevation_gain": 1.0,
                 "calories": 450.0,
+                "activity_type": "Ride",
             },
             {
                 "id": 9999,
@@ -162,6 +173,7 @@ class TestSyncSingleUserStravaActivitiesTask:
                 "elapsed_time": 2,
                 "total_elevation_gain": 2.0,
                 "calories": 620.0,
+                "activity_type": "Ride",
             },
         ]
         mock_strategy_class.return_value = mock_strategy

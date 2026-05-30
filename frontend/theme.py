@@ -107,6 +107,66 @@ def inject_theme_variables() -> None:
             margin: 0.2rem 0;
         }}
 
+        .pv-dashboard-note {{
+            margin: 0.4rem 0 0;
+            color: color-mix(in srgb, var(--text-color) 74%, var(--background-color));
+            font-size: 0.96rem;
+            line-height: 1.5;
+        }}
+
+        .pv-status-pill {{
+            display: inline-block;
+            padding: 0.28rem 0.7rem;
+            border-radius: 999px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }}
+
+        .pv-status-success {{
+            background: color-mix(in srgb, var(--pv-accent-sage) 24%, transparent);
+            color: var(--pv-accent-sage);
+            border: 1px solid color-mix(in srgb, var(--pv-accent-sage) 45%, transparent);
+        }}
+
+        .pv-status-queued {{
+            background: color-mix(in srgb, var(--pv-accent-peach) 26%, transparent);
+            color: color-mix(in srgb, var(--text-color) 86%, var(--pv-accent-peach));
+            border: 1px solid color-mix(in srgb, var(--pv-accent-peach) 52%, transparent);
+        }}
+
+        .pv-status-failed {{
+            background: color-mix(in srgb, #D05C5C 18%, transparent);
+            color: #D05C5C;
+            border: 1px solid color-mix(in srgb, #D05C5C 40%, transparent);
+        }}
+
+        .pv-status-idle {{
+            background: color-mix(in srgb, var(--pv-accent-lavender) 28%, transparent);
+            color: color-mix(in srgb, var(--text-color) 78%, var(--pv-accent-lavender));
+            border: 1px solid color-mix(in srgb, var(--pv-accent-lavender) 48%, transparent);
+        }}
+
+        .pv-empty-state {{
+            padding: 1.4rem 1.2rem;
+            border: 1px dashed color-mix(in srgb, var(--border-color) 82%, transparent);
+            border-radius: 1rem;
+            background: linear-gradient(135deg, var(--secondary-background-color), transparent);
+        }}
+
+        .pv-empty-title {{
+            margin: 0;
+            font-size: 1.25rem;
+            line-height: 1.2;
+        }}
+
+        .pv-empty-copy {{
+            margin: 0.6rem 0 0;
+            color: color-mix(in srgb, var(--text-color) 74%, var(--background-color));
+            line-height: 1.6;
+        }}
+
         </style>
         """,
         unsafe_allow_html=True,
